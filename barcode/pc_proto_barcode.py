@@ -36,6 +36,9 @@ def determine_material(text_data):
 def lookup_barcode(barcode_data):
     """Queries Open Food Facts first, falls back to UPCitemdb."""
     
+    # Add this line to initialize the variable with a default value
+    found_name = "Unknown Item"
+    
     # Pad 12-digit UPCs to 13 digits (EAN-13) for Open Food Facts compatibility
     off_barcode = barcode_data.zfill(13) if len(barcode_data) == 12 else barcode_data
     
