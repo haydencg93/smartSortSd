@@ -1,3 +1,4 @@
+
 # Smart Sort
 
 Smart Sort records waste disposal recommendations and provides an operations dashboard for reviewing transaction volume, response times, and input methods.
@@ -35,3 +36,15 @@ python server.py
 The receiver listens on port `8000` by default. It accepts completed barcode lookups at `/api/scan` and stores classified transactions in the same database used by the dashboard. `SMARTSORT_HOST`, `SMARTSORT_PORT`, and `SMARTSORT_DB` can override its defaults.
 
 The image classification, training scripts, datasets, and model weights remain in `ml/`.
+
+### Download Requirements
+
+```bash
+python -m pip install -r server/requirements.txt
+```
+
+#### Including
+
+- **fastapi** for the API
+- **pydantic** for request validation
+- **uvicorn**  to run the server API

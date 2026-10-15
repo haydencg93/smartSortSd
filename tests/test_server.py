@@ -9,7 +9,7 @@ from pathlib import Path
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
-from server import ScanRequestHandler, initialize_database
+from server.server import ScanRequestHandler, initialize_database
 
 
 class ScanServerTests(unittest.TestCase):
