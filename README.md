@@ -9,7 +9,7 @@ app/                    Streamlit dashboard implementation
 barcode/                Barcode scanner prototype
 ml/                     Image classification and training files
 tests/                  Server tests
-server.py               Local scan receiver and SQLite writer
+server.py               Local scan receiver and SQLite writer ( using 
 ```
 
 The dashboard lets you choose between generated sample data and the live SQLite database. Sample data is the default preview and is not written to the database. Live database mode shows its connection state and an empty state if no transactions are available.

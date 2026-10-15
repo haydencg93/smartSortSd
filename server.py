@@ -1,59 +1,83 @@
-"""Local receiver for Smart Sort barcode scans.
+"""Smart Sort server.
 
-Run with ``python server.py``. The scanner posts JSON to ``/api/scan`` and
-the server stores classified transactions in ``waste_sorter.db``.
+Purpose
+------------
+Receives results from the scanners (the PC barcode prototype and, later, the
+ESP32 camera), saves them in a SQLite database, and tells the sorter which
+way to send the item: recycling -> "left", trash -> "right".
+
+Endpoints
+---------
+GET  /health     Quick "is the server up?" check.
+POST /api/scan   JSON from the barcode scanner after it has looked the item up.
+POST /api/image  Raw JPEG bytes from the camera. Saved to the uploads/ folder.
+
+Run:   python server.py                 (needs: pip install fastapi uvicorn)
+Docs:  http://<this-pc>:8000/docs 
 """
 
-from __future__ import annotations
-
-import argparse
-import json
-import logging
-import math
-import os
 import sqlite3
+from contextlib import closing
 from datetime import datetime, timezone
-from functools import partial
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from typing import Any
-from urllib.parse import urlsplit
+from pathlib import Path
+from typing import Literal
+
+import uvicorn
+from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel, Field, field_validator
+
+# ---------------------------------------------------------------- settings
+DB_PATH = "waste_sorter.db"      # SQLite file, created automatically
+IMAGE_DIR = Path("uploads")      # where camera photos are saved
+MAX_IMAGE_BYTES = 2_000_000      # reject photos larger than ~2 MB
+
+# Which way the sorter moves each category. Change it here if the bins swap.
+BIN_DIRECTION = {"recycling": "left", "trash": "right"}
+
+app = FastAPI(title="Smart Sort")
 
 
-MAX_REQUEST_BYTES = 16_384
-CATEGORY_DIRECTIONS = {"recycling": "left", "trash": "right"}
-DEFAULT_DB_PATH = "waste_sorter.db"
+# ---------------------------------------------------------------- database
+def now() -> str:
+    """Current UTC time as text, e.g. 2026-10-15T18:49:15+00:00."""
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
-def initialize_database(db_path: str) -> None:
-    """Create the scan log and dashboard-compatible transaction table."""
-    with sqlite3.connect(db_path) as connection:
-        connection.execute(
-            """
+def connect() -> sqlite3.Connection:
+    """Open the database. We open a fresh connection per request (simple and safe)."""
+    return sqlite3.connect(DB_PATH, timeout=10)
+
+
+def create_tables() -> None:
+    """Create both tables if they don't exist yet (safe to run every start)."""
+    # `closing` closes the connection afterwards; `with db` saves (commits) the changes.
+    with closing(connect()) as db, db:
+        # WAL mode: faster writes, and a dashboard can read while we write.
+        db.execute("PRAGMA journal_mode=WAL")
+
+        # `transactions` = one row per item that was actually sorted.
+        # The dashboard reads this table.
+        db.execute("""
             CREATE TABLE IF NOT EXISTS transactions (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 timestamp TEXT NOT NULL,
-                input_method TEXT NOT NULL,
-                category TEXT NOT NULL,
-                confidence REAL,
+                input_method TEXT NOT NULL,   -- 'barcode' or 'image'
+                category TEXT NOT NULL,       -- 'recycling' or 'trash'
+                confidence REAL,              -- only used for image scans
                 latency_ms REAL NOT NULL,
                 status TEXT NOT NULL,
-                bin_direction TEXT,
+                bin_direction TEXT,           -- 'left' or 'right'
                 image_path TEXT,
                 barcode TEXT,
                 item_name TEXT,
                 material TEXT
-            )
-            """
-        )
-        existing_columns = {
-            row[1] for row in connection.execute("PRAGMA table_info(transactions)")
-        }
-        for column in ("barcode", "item_name", "material"):
-            if column not in existing_columns:
-                connection.execute(f"ALTER TABLE transactions ADD COLUMN {column} TEXT")
+            )""")
 
-        connection.execute(
-            """
+        # `scanner_events` = log of EVERY barcode scan, including ones where
+        # the item couldn't be identified (those have no category).
+        db.execute("""
             CREATE TABLE IF NOT EXISTS scanner_events (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 timestamp TEXT NOT NULL,
@@ -63,176 +87,126 @@ def initialize_database(db_path: str) -> None:
                 category TEXT,
                 latency_ms REAL NOT NULL,
                 status TEXT NOT NULL
-            )
-            """
-        )
+            )""")
 
 
-def _optional_text(payload: dict[str, Any], field: str, max_length: int) -> str | None:
-    value = payload.get(field)
-    if value is None:
-        return None
-    if not isinstance(value, str):
-        raise ValueError(f"{field} must be a string")
-    value = value.strip()
-    if len(value) > max_length:
-        raise ValueError(f"{field} is too long")
-    return value or None
+# Runs once when the server starts.
+create_tables()
+IMAGE_DIR.mkdir(exist_ok=True)
 
 
-def record_scan(db_path: str, payload: dict[str, Any]) -> dict[str, Any]:
-    """Validate and persist one completed scanner lookup."""
-    barcode = _optional_text(payload, "barcode", 128)
-    if not barcode:
-        raise ValueError("barcode is required")
+# ---------------------------------------------------------------- input shape
+class Scan(BaseModel):
+    """The JSON the barcode scanner sends to /api/scan.
 
-    item_name = _optional_text(payload, "item_name", 512)
-    material = _optional_text(payload, "material", 128)
-    if material:
-        material = material.lower()
+    FastAPI checks every request against this. If something is wrong
+    (missing barcode, negative latency, category not recycling/trash) the
+    request is rejected with a 400 error before any of our code runs.
+    """
 
-    category = _optional_text(payload, "category", 32)
-    if category:
-        category = category.lower()
-        if category not in CATEGORY_DIRECTIONS:
-            raise ValueError("category must be 'recycling', 'trash', or null")
+    barcode: str = Field(min_length=1, max_length=128)          # required
+    item_name: str | None = Field(default=None, max_length=512)
+    material: str | None = Field(default=None, max_length=128)  # e.g. 'plastic', 'unknown'
+    category: Literal["recycling", "trash"] | None = None       # !!! None = scanner couldn't decide
+    latency_ms: float = Field(default=0, ge=0)                  # !!! how long the lookup took
 
-    latency = payload.get("latency_ms", 0)
-    if isinstance(latency, bool) or not isinstance(latency, (int, float)):
-        raise ValueError("latency_ms must be a non-negative number")
-    latency_ms = float(latency)
-    if not math.isfinite(latency_ms) or latency_ms < 0:
-        raise ValueError("latency_ms must be a non-negative number")
+    @field_validator("barcode", "item_name", "material", "category", mode="before")
 
-    timestamp = datetime.now(timezone.utc).isoformat(timespec="seconds")
-    status = "success" if category else "retry"
+    # Clean up text before
+    @classmethod
+    def clean(cls, value, info):
+        """Tidy the text before it is checked: trim spaces, '' -> None, lowercase."""
+        if not isinstance(value, str):
+            return value
+        value = value.strip()
+        if info.field_name in ("material", "category"):
+            value = value.lower()
+        if info.field_name == "barcode":
+            return value  # an empty barcode is rejected by min_length
+        return value or None
+
+
+def error(status: int, message: str) -> JSONResponse:
+    """Every error from this server looks like {"error": "message"}."""
+    return JSONResponse(status_code=status, content={"error": message})
+
+
+@app.exception_handler(RequestValidationError)
+async def bad_input(_: Request, exc: RequestValidationError):
+    """Turn FastAPI's validation errors into our simple {"error": ...} format."""
+    first = exc.errors()[0]
+    field = ".".join(str(part) for part in first["loc"] if part != "body")
+    return error(400, f"{field}: {first['msg']}")
+
+
+# ---------------------------------------------------------------- routes
+@app.get("/health")
+def health():
+    return {"status": "ok"}
+
+
+@app.post("/api/scan", status_code=201)
+def receive_scan(scan: Scan):
+    """Barcode already looked up by the scanner: log it and say which way to sort."""
+    # No category means the scanner couldn't identify the material,
+    # so we tell it to "retry" (the image camera is the fallback).
+    status = "success" if scan.category else "retry"
+    direction = BIN_DIRECTION.get(scan.category)  # None if there's no category
     transaction_id = None
 
-    with sqlite3.connect(db_path) as connection:
-        connection.execute(
-            """
-            INSERT INTO scanner_events
-                (timestamp, barcode, item_name, material, category, latency_ms, status)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-            """,
-            (timestamp, barcode, item_name, material, category, latency_ms, status),
+    # Both inserts happen together: either both are saved or neither is.
+    with closing(connect()) as db, db:
+
+        # 1) Always log the scan, even failed lookups.
+        db.execute(
+            "INSERT INTO scanner_events "
+            "(timestamp, barcode, item_name, material, category, latency_ms, status) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (now(), scan.barcode, scan.item_name, scan.material,
+             scan.category, scan.latency_ms, status),
         )
-        if category:
-            cursor = connection.execute(
-                """
-                INSERT INTO transactions
-                    (timestamp, input_method, category, confidence, latency_ms,
-                     status, bin_direction, image_path, barcode, item_name, material)
-                VALUES (?, 'barcode', ?, NULL, ?, ?, ?, NULL, ?, ?, ?)
-                """,
-                (
-                    timestamp,
-                    category,
-                    latency_ms,
-                    status,
-                    CATEGORY_DIRECTIONS[category],
-                    barcode,
-                    item_name,
-                    material,
-                ),
+
+        # 2) Only items that got sorted become a dashboard transaction.
+        if scan.category:
+            cursor = db.execute(
+                "INSERT INTO transactions "
+                "(timestamp, input_method, category, latency_ms, status, "
+                " bin_direction, barcode, item_name, material) "
+                "VALUES (?, 'barcode', ?, ?, ?, ?, ?, ?, ?)",
+                (now(), scan.category, scan.latency_ms, status, direction,
+                 scan.barcode, scan.item_name, scan.material),
             )
             transaction_id = cursor.lastrowid
 
-    return {
-        "accepted": True,
-        "status": status,
-        "transaction_id": transaction_id,
-    }
+    # The scanner reads "status" from this reply.
+    return {"accepted": True, "status": status,
+            "transaction_id": transaction_id, "bin_direction": direction}
 
 
-class ScanRequestHandler(BaseHTTPRequestHandler):
-    db_path = DEFAULT_DB_PATH
+# ---------------------------------------------------------------- image upload
+@app.post("/api/image", status_code=201)
 
-    def __init__(self, request, client_address, server, db_path=DEFAULT_DB_PATH):
-        self.db_path = db_path
-        super().__init__(request, client_address, server)
+async def receive_image(request: Request):
+    """Camera sends raw JPEG bytes (Content-Type: image/jpeg). Saved to uploads/."""
+    # Only accept JPEG photos.
+    if request.headers.get("content-type", "").split(";")[0].strip() != "image/jpeg":
+        return error(415, "content type must be image/jpeg")
 
-    def _send_json(self, status_code: int, response: dict[str, Any]) -> None:
-        body = json.dumps(response).encode("utf-8")
-        self.send_response(status_code)
-        self.send_header("Content-Type", "application/json; charset=utf-8")
-        self.send_header("Content-Length", str(len(body)))
-        self.end_headers()
-        self.wfile.write(body)
+    # The request body IS the photo.
+    image = await request.body()
+    if not image or len(image) > MAX_IMAGE_BYTES:
+        return error(413, "image is empty or too large")
 
-    def do_GET(self) -> None:
-        if urlsplit(self.path).path == "/health":
-            self._send_json(200, {"status": "ok"})
-            return
-        self._send_json(404, {"error": "not found"})
+    # Timestamped file name so photos never overwrite each other.
+    path = IMAGE_DIR / f"{datetime.now():%Y%m%d-%H%M%S-%f}.jpg"
+    path.write_bytes(image)
 
-    def do_POST(self) -> None:
-        if urlsplit(self.path).path != "/api/scan":
-            self._send_json(404, {"error": "not found"})
-            return
-        if self.headers.get_content_type() != "application/json":
-            self._send_json(415, {"error": "content type must be application/json"})
-            return
+    # TODO: classify the image here, then add a row to `transactions`.
+    
+    return {"accepted": True, "image_path": str(path)}
 
-        try:
-            content_length = int(self.headers.get("Content-Length", ""))
-        except ValueError:
-            self._send_json(400, {"error": "a valid Content-Length header is required"})
-            return
-        if content_length < 1 or content_length > MAX_REQUEST_BYTES:
-            self._send_json(413, {"error": "request body size is invalid"})
-            return
-
-        try:
-            payload = json.loads(self.rfile.read(content_length))
-            if not isinstance(payload, dict):
-                raise ValueError("JSON body must be an object")
-            result = record_scan(self.db_path, payload)
-        except (json.JSONDecodeError, UnicodeDecodeError, ValueError) as error:
-            self._send_json(400, {"error": str(error)})
-            return
-        except sqlite3.Error:
-            logging.exception("Could not save scanner request")
-            self._send_json(500, {"error": "could not save scan"})
-            return
-
-        self._send_json(201, result)
-
-
-def main() -> None:
-    parser = argparse.ArgumentParser(description="Run the Smart Sort scan receiver.")
-    parser.add_argument(
-        "--host",
-        default=os.environ.get("SMARTSORT_HOST", "0.0.0.0"),
-        help="interface to listen on (default: 0.0.0.0)",
-    )
-    parser.add_argument(
-        "--port",
-        type=int,
-        default=int(os.environ.get("SMARTSORT_PORT", "8000")),
-        help="port to listen on (default: 8000)",
-    )
-    parser.add_argument(
-        "--db",
-        default=os.environ.get("SMARTSORT_DB", DEFAULT_DB_PATH),
-        help="SQLite database path (default: waste_sorter.db)",
-    )
-    args = parser.parse_args()
-    if not 1 <= args.port <= 65535:
-        parser.error("--port must be between 1 and 65535")
-
-    initialize_database(args.db)
-    handler = partial(ScanRequestHandler, db_path=args.db)
-    server = ThreadingHTTPServer((args.host, args.port), handler)
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
-    logging.info("Smart Sort receiver listening on %s:%s (database: %s)", args.host, args.port, args.db)
-    try:
-        server.serve_forever()
-    except KeyboardInterrupt:
-        logging.info("Stopping Smart Sort receiver")
-    finally:
-        server.server_close()
-
-
+# 
+# Start the server when you run `python server.py`.
+# 0.0.0.0 = reachable from other devices on your network (like the ESP32).
 if __name__ == "__main__":
-    main()
+    uvicorn.run(app, host="0.0.0.0", port=8000)
