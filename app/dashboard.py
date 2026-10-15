@@ -1,15 +1,6 @@
-"""
-Waste Sorter — Officials Dashboard (skeleton)
-================================================
+"""Streamlit dashboard for Smart Sort transaction data.
 
-Satisfies R1.3.2 (web-based dashboard to visualize counts over time).
-
-This is a SKELETON: it runs standalone right now using generated mock data,
-so you can build/style the dashboard before the ESP32 + classify server
-pipeline exists. Every place that needs to change when you wire up the real
-SQLite log is marked "# TODO(real-data)".
-
-Expected transactions table schema (created by the classify server):
+Expected transactions table schema (created by ``server.py``):
 
     CREATE TABLE transactions (
         id            INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -24,16 +15,14 @@ Expected transactions table schema (created by the classify server):
                                                -- NULL for pure barcode lookups with no image capture
     )
 
-Run with:  streamlit run dashboard.py
+Run with:  streamlit run app/dashboard.py
 """
 
-import io
 import os
 import sqlite3
-import zipfile
-from datetime import datetime, timedelta
-
 import warnings
+from datetime import datetime, timedelta
+from pathlib import Path
 
 import altair as alt
 import numpy as np
@@ -47,19 +36,17 @@ warnings.filterwarnings("ignore", category=alt.AltairDeprecationWarning)
 # Config
 # ----------------------------------------------------------------------------
 
-DB_PATH = "waste_sorter.db"  # TODO(real-data): point at the server's actual DB path
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+DB_PATH = os.environ.get("SMARTSORT_DB", str(PROJECT_ROOT / "waste_sorter.db"))
 SLA_SECONDS = 5              # C1.1 — recommendation must display within 5s
 ACCURACY_TARGET = 0.75       # C1.2 — held-out test accuracy target
 
-# TODO(real-data): the live dashboard has no ground-truth labels, so it can't
-# compute held-out accuracy itself — that number only exists when someone runs
-# the offline evaluation script against a labeled test set. Point this at that
-# script's output (e.g. read the latest value from a small JSON file it
-# writes) instead of a hardcoded placeholder once that pipeline exists.
+# Reported from the latest offline evaluation; live transactions do not contain
+# ground-truth labels for computing model accuracy.
 LATEST_HELDOUT_ACCURACY = 0.81
 LATEST_HELDOUT_ACCURACY_DATE = "2026-09-01"
 
-MOCK_IMAGE_DIR = "mock_captures"  # TODO(real-data): replace with the server's real capture directory
+MOCK_IMAGE_DIR = str(PROJECT_ROOT / "mock_captures")
 
 # Category → bin direction + display color, in one place (R1.2.2 uses the
 # direction; charts use the color). R1.1.1 only requires recycling/trash,
@@ -81,151 +68,20 @@ STATUS_COLORS = {
     "retry": "#B23A2E",
 }
 
-st.set_page_config(page_title="Waste Sorter Dashboard", page_icon="♻️", layout="wide")
-
-
-# ----------------------------------------------------------------------------
-# Styling — civic/municipal palette (fits an Iowa City public-works tool
-# rather than a generic SaaS template): warm paper background, moss green
-# for recycling, clay brown for trash, Public Sans for type (the U.S. Web
-# Design System's official typeface — a deliberate fit for a government
-# ops dashboard rather than a default web font).
-# ----------------------------------------------------------------------------
-
-st.markdown(
-    """
-    <style>
-    @import url('https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600;700&display=swap');
-
-    html, body, [class*="css"], .stApp {
-        font-family: 'Public Sans', sans-serif;
-    }
-
-    :root {
-        --ws-bg: #F6F5F1;
-        --ws-text: #202A22;
-        --ws-muted: #5B6259;
-        --ws-border: #DCDFD6;
-    }
-
-    .stApp { background-color: var(--ws-bg); }
-
-    section[data-testid="stSidebar"] {
-        background-color: #EFEEE7;
-        border-right: 1px solid var(--ws-border);
-    }
-
-    h1, h2, h3 {
-        font-family: 'Public Sans', sans-serif;
-        font-weight: 600;
-        color: var(--ws-text);
-        letter-spacing: -0.01em;
-    }
-
-    hr { border-color: var(--ws-border); }
-
-    /* Header block */
-    .ws-header {
-        display: flex;
-        align-items: flex-end;
-        justify-content: space-between;
-        border-bottom: 1px solid var(--ws-border);
-        padding-bottom: 14px;
-        margin-bottom: 22px;
-    }
-    .ws-header h1 { margin: 0; font-size: 26px; }
-    .ws-header .ws-subtitle { color: var(--ws-muted); font-size: 14px; margin-top: 4px; }
-    .ws-header .ws-meta { text-align: right; color: var(--ws-muted); font-size: 13px; line-height: 1.5; }
-
-    /* KPI cards */
-    .kpi-row { display: flex; gap: 14px; margin-bottom: 6px; flex-wrap: wrap; }
-    .kpi-card {
-        flex: 1 1 160px;
-        background: #FFFFFF;
-        border: 1px solid var(--ws-border);
-        border-left: 4px solid #999;
-        border-radius: 4px;
-        padding: 18px 20px;
-    }
-    .kpi-label {
-        font-size: 12px;
-        color: var(--ws-muted);
-        margin-bottom: 8px;
-        display: flex;
-        align-items: center;
-    }
-    .kpi-value { font-size: 24px; font-weight: 600; color: var(--ws-text); line-height: 1.2; margin-bottom: 6px; }
-    .kpi-sub { font-size: 11px; color: var(--ws-muted); }
-
-    /* "?" help badge, replaces st.metric's built-in tooltip since these are custom cards */
-    .kpi-help {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        width: 14px;
-        height: 14px;
-        border-radius: 50%;
-        border: 1px solid var(--ws-muted);
-        color: var(--ws-muted);
-        font-size: 10px;
-        margin-left: 6px;
-        cursor: help;
-        position: relative;
-        flex-shrink: 0;
-    }
-    .kpi-help:hover::after {
-        content: attr(data-tip);
-        position: absolute;
-        bottom: 145%;
-        left: 50%;
-        transform: translateX(-50%);
-        background: #202A22;
-        color: #F6F5F1;
-        padding: 8px 10px;
-        border-radius: 4px;
-        font-size: 11px;
-        line-height: 1.4;
-        white-space: normal;
-        width: 200px;
-        text-align: left;
-        z-index: 10;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.18);
-    }
-
-    /* Section labels above chart groups */
-    .ws-section-label {
-        font-size: 13px;
-        font-weight: 600;
-        color: var(--ws-text);
-        margin: 10px 0 4px 0;
-    }
-    .ws-section-note { font-size: 12px; color: var(--ws-muted); margin: 10px 0 16px 0; }
-
-    button[data-baseweb="tab"] { font-family: 'Public Sans', sans-serif; font-weight: 500; }
-
-    [data-testid="stDataFrame"] { border: 1px solid var(--ws-border); border-radius: 4px; }
-
-    /* Extra breathing room around each chart card so titles/axis labels don't
-       crowd the card edge, and so charts have a stable box before a tab is
-       first opened (prevents the Vega-Lite "renders squashed until you touch
-       the tab" sizing bug). */
-    [data-testid="stVegaLiteChart"] {
-        padding: 14px 10px 6px 4px;
-        min-height: 1px;
-    }
-    </style>
-    """,
-    unsafe_allow_html=True,
+st.set_page_config(
+    page_title="Waste sorter dashboard",
+    page_icon="♻️",
+    layout="wide",
 )
 
 
 def altair_theme():
     return {
         "config": {
-            "font": "Public Sans",
+            "font": "sans-serif",
             "axis": {
-                "labelFont": "Public Sans",
-                "titleFont": "Public Sans",
+                "labelFont": "sans-serif",
+                "titleFont": "sans-serif",
                 "labelColor": "#5B6259",
                 "titleColor": "#202A22",
                 "labelFontSize": 11,
@@ -238,8 +94,8 @@ def altair_theme():
                 "tickColor": "#C8CBC1",
             },
             "legend": {
-                "labelFont": "Public Sans",
-                "titleFont": "Public Sans",
+                "labelFont": "sans-serif",
+                "titleFont": "sans-serif",
                 "labelFontSize": 11,
                 "titleFontSize": 12,
                 "titleFontWeight": 500,
@@ -247,7 +103,7 @@ def altair_theme():
                 "padding": 8,
             },
             "title": {
-                "font": "Public Sans",
+                "font": "sans-serif",
                 "fontSize": 13,
                 "fontWeight": 500,
                 "color": "#202A22",
@@ -322,25 +178,10 @@ def hover_line_chart(
     return (line + points + hit_area).properties(title=title)
 
 
-def kpi_card_html(label: str, value: str, sub: str, color: str, help_text: str = "") -> str:
-    help_badge = f'<span class="kpi-help" data-tip="{help_text}">?</span>' if help_text else ""
-    return (
-        f'<div class="kpi-card" style="border-left-color:{color}">'
-        f'<div class="kpi-label">{label}{help_badge}</div>'
-        f'<div class="kpi-value">{value}</div>'
-        f'<div class="kpi-sub">{sub}</div>'
-        f"</div>"
-    )
-
-
 def _ensure_mock_images() -> dict:
     """Create one placeholder capture per category (idempotent — skips if already on disk).
 
-    TODO(real-data): once the classify server exists, it writes a unique image
-    per transaction to MOCK_IMAGE_DIR (or wherever real captures live) and sets
-    `image_path` in the transactions table accordingly. This function and the
-    "one shared placeholder per category" behavior in _generate_mock_data go
-    away entirely at that point — every row will point at its own real photo.
+    Sample images are generated only when the dashboard is using mock data.
     """
     os.makedirs(MOCK_IMAGE_DIR, exist_ok=True)
     paths = {}
@@ -362,21 +203,20 @@ def _ensure_mock_images() -> dict:
 # ----------------------------------------------------------------------------
 
 @st.cache_data(ttl=10)  # short TTL so the dashboard stays close to live once real data exists
-def load_data() -> pd.DataFrame:
-    """Load transaction log. Falls back to mock data if no DB is present yet."""
-    if os.path.exists(DB_PATH):
-        # TODO(real-data): this branch activates automatically once the classify
-        # server has created waste_sorter.db and started logging rows.
-        conn = sqlite3.connect(DB_PATH)
-        df = pd.read_sql_query("SELECT * FROM transactions", conn)
-        conn.close()
-    else:
-        df = _generate_mock_data()
-
+def load_data() -> tuple[pd.DataFrame, str | None]:
+    """Load transactions from the configured SQLite database."""
+    if not os.path.exists(DB_PATH):
+        return pd.DataFrame(), "Database file does not exist."
+    try:
+        with sqlite3.connect(DB_PATH, timeout=2) as connection:
+            df = pd.read_sql_query("SELECT * FROM transactions", connection)
+    except sqlite3.Error as error:
+        return pd.DataFrame(), str(error)
     df["timestamp"] = pd.to_datetime(df["timestamp"])
-    return df
+    return df, None
 
 
+@st.cache_data
 def _generate_mock_data(n: int = 600) -> pd.DataFrame:
     """Synthetic data shaped like the real log, for UI development only."""
     rng = np.random.default_rng(seed=42)
@@ -439,12 +279,68 @@ def _generate_mock_data(n: int = 600) -> pd.DataFrame:
 # Load + sidebar filters
 # ----------------------------------------------------------------------------
 
-df_raw = load_data()
+st.sidebar.markdown("### Data source")
+data_source = st.sidebar.selectbox(
+    "Choose data",
+    options=["Sample data", "Live database"],
+    help="Sample data is generated for preview and is not added to the database.",
+)
+
+if data_source == "Sample data":
+    df_raw = _generate_mock_data()
+    database_error = None
+    st.sidebar.caption("Preview mode · sample transactions are not saved.")
+else:
+    connection_status = st.sidebar.status(
+        "Connecting to live database…",
+        state="running",
+        expanded=False,
+    )
+    if not os.path.exists(DB_PATH):
+        df_raw = pd.DataFrame()
+        database_error = None
+        connection_status.update(
+            label="Waiting to connect · database file not found",
+            state="running",
+            expanded=True,
+        )
+    else:
+        df_raw, database_error = load_data()
+        if database_error:
+            connection_status.update(
+                label="Waiting for a readable transactions table",
+                state="error",
+                expanded=True,
+            )
+        elif df_raw.empty:
+            connection_status.update(
+                label="Connected · waiting for transactions",
+                state="complete",
+                expanded=False,
+            )
+        else:
+            connection_status.update(
+                label="Connected to live database",
+                state="complete",
+                expanded=False,
+            )
+    if st.sidebar.button("Check connection again", icon=":material/refresh:"):
+        load_data.clear()
+        st.rerun()
+
+if df_raw.empty:
+    st.title("Waste sorter dashboard", icon=":material/recycling:")
+    if data_source == "Sample data":
+        st.info("No sample transactions are available.")
+    elif database_error:
+        st.error(f"Could not read transactions from the live database: {database_error}")
+    elif not os.path.exists(DB_PATH):
+        st.info("Waiting for the live database. Choose Sample data to preview the dashboard now.")
+    else:
+        st.info("Connected to the database. Waiting for the first classified transaction.")
+    st.stop()
 
 st.sidebar.markdown("### Filters")
-
-if not os.path.exists(DB_PATH):
-    st.sidebar.info("Showing generated mock data — no live database found yet.")
 
 min_date = df_raw["timestamp"].min().date()
 max_date = df_raw["timestamp"].max().date()
@@ -489,20 +385,11 @@ mask = (
 )
 df = df_raw.loc[mask].copy()
 
-st.markdown(
-    f"""
-    <div class="ws-header">
-        <div>
-            <h1>Waste Sorter — Operations Dashboard</h1>
-            <div class="ws-subtitle">Disposal recommendation activity for Iowa City waste management officials</div>
-        </div>
-        <div class="ws-meta">
-            {len(df):,} transactions in range<br>
-            Updated {datetime.now().strftime("%b %-d, %Y · %-I:%M %p")}
-        </div>
-    </div>
-    """,
-    unsafe_allow_html=True,
+st.title("Waste sorter dashboard", icon=":material/recycling:")
+st.caption(
+    "Disposal recommendation activity for Iowa City · "
+    f"{data_source} · {len(df):,} transactions in range · "
+    f"Updated {datetime.now().strftime('%b %-d, %Y at %-I:%M %p')}"
 )
 
 if df.empty:
@@ -520,44 +407,20 @@ sla_compliance = (df["latency_ms"] <= SLA_SECONDS * 1000).mean() * 100
 retry_rate = (df["status"] == "retry").mean() * 100
 category_pcts = (df["category"].value_counts(normalize=True) * 100).to_dict()
 
-sla_color = "#2F6B4F" if sla_compliance >= 90 else ("#B8792F" if sla_compliance >= 75 else "#B23A2E")
-retry_color = "#8B9388" if retry_rate < 10 else ("#B8792F" if retry_rate < 20 else "#B23A2E")
-
-cards = [
-    kpi_card_html(
-        "Total items", f"{total:,}", "in selected range", "#5B6259",
-        "Count of all disposal transactions logged for the current filters.",
-    )
+metric_definitions = [
+    ("Transactions", f"{total:,}", "Current filter range"),
+    ("Recycling", f"{category_pcts.get('recycling', 0):.0f}%", "Share of classified items"),
+    ("Trash", f"{category_pcts.get('trash', 0):.0f}%", "Share of classified items"),
+    ("Average latency", f"{avg_latency_s:.2f}s", f"Target ≤ {SLA_SECONDS}s"),
+    ("Within SLA", f"{sla_compliance:.0f}%", f"Recommendations returned within {SLA_SECONDS}s"),
+    ("Retry rate", f"{retry_rate:.1f}%", "Unrecognized visual input"),
 ]
-for cat, meta in CATEGORIES.items():
-    cards.append(
-        kpi_card_html(
-            f"{cat.capitalize()}", f"{category_pcts.get(cat, 0):.0f}%", "of total volume", meta["color"],
-            f"Share of transactions classified as {cat}.",
-        )
-    )
-cards.append(
-    kpi_card_html(
-        "Avg latency", f"{avg_latency_s:.2f}s", f"SLA target ≤ {SLA_SECONDS}s (C1.1)", "#3D6B8C",
-        f"Average time from item presentation to displayed recommendation. SLA target: ≤{SLA_SECONDS}s per constraint C1.1.",
-    )
-)
-cards.append(
-    kpi_card_html(
-        "SLA compliance", f"{sla_compliance:.0f}%", "within 5s target", sla_color,
-        f"Percentage of transactions that received a recommendation within the {SLA_SECONDS}s SLA (C1.1).",
-    )
-)
-cards.append(
-    kpi_card_html(
-        "Retry rate", f"{retry_rate:.1f}%", "visual input not recognized (R1.1.6)", retry_color,
-        "Percentage of visual-identification attempts that weren't recognized and prompted the user to retry (R1.1.6).",
-    )
-)
-
-st.markdown(f'<div class="kpi-row">{"".join(cards)}</div>', unsafe_allow_html=True)
-st.write("")
-st.divider()
+for offset in range(0, len(metric_definitions), 3):
+    metric_columns = st.columns(3)
+    for column, (label, value, help_text) in zip(
+        metric_columns, metric_definitions[offset : offset + 3]
+    ):
+        column.metric(label, value, help=help_text, border=True)
 
 
 # ----------------------------------------------------------------------------
@@ -609,7 +472,7 @@ with tab_overview:
     day_options = ["All days in range"] + [d.strftime("%a, %b %-d, %Y") for d in available_days]
     day_lookup = {d.strftime("%a, %b %-d, %Y"): d for d in available_days}
 
-    hour_col, spacer = st.columns([1, 2])
+    hour_col, _ = st.columns([1, 2])
     with hour_col:
         selected_day_label = st.selectbox("Show hourly volume for", options=day_options, key="hour_day_picker")
 
@@ -634,10 +497,9 @@ with tab_overview:
         .properties(title=hour_title)
     )
     st.altair_chart(themed(chart, height=240), width="stretch", key="chart_hourly_volume")
-    st.markdown(
-        '<div class="ws-section-note">Helps size pickup/service schedules — pick a single day to '
-        "check its shape, or leave on \"All days\" to see the aggregate pattern.</div>",
-        unsafe_allow_html=True,
+    st.caption(
+        "Use a single day to inspect its hourly pattern, or keep all days selected "
+        "to see the aggregate volume."
     )
 
 # --- Input methods -----------------------------------------------------------
@@ -656,11 +518,7 @@ with tab_methods:
             title="Barcode vs. visual identification"
         )
         st.altair_chart(themed(chart, height=200), width="stretch", key="chart_method_totals")
-        st.markdown(
-            '<div class="ws-section-note">R1.1.3–R1.1.7: barcode is attempted first; '
-            "visual identification is the fallback.</div>",
-            unsafe_allow_html=True,
-        )
+        st.caption("Barcode is attempted first; visual identification is the fallback.")
 
     with col2:
         status_df = df.groupby(["input_method", "status"]).size().reset_index(name="count")
@@ -702,35 +560,25 @@ with tab_quality:
     # the actual measured accuracy from the held-out test set (C1.2).
     p50 = df["latency_ms"].quantile(0.50)
     p95 = df["latency_ms"].quantile(0.95)
-    p99 = df["latency_ms"].quantile(0.99)
-    max_latency = df["latency_ms"].max()
     over_sla_count = int((df["latency_ms"] > SLA_SECONDS * 1000).sum())
 
-    heldout_color = "#2F6B4F" if LATEST_HELDOUT_ACCURACY >= ACCURACY_TARGET else "#B23A2E"
-
-    stat_cards = [
-        kpi_card_html(
-            "Held-out accuracy", f"{LATEST_HELDOUT_ACCURACY:.0%}", f"target ≥{ACCURACY_TARGET:.0%} (C1.2)", heldout_color,
-            f"Accuracy measured against a labeled held-out test set of Iowa City items, "
-            f"last run {LATEST_HELDOUT_ACCURACY_DATE}. This is separate from live confidence — "
-            "it's the actual number C1.2 is judged against.",
-        ),
-        kpi_card_html(
-            "Median latency", f"{p50:.0f}ms", "typical case", "#5B6259",
-            "50th percentile latency — half of all transactions were faster than this.",
-        ),
-        kpi_card_html(
-            "P95 latency", f"{p95:.0f}ms", "slower 5% of cases", "#3D6B8C",
-            "95th percentile latency. Averages can hide a slow tail — this shows what the "
-            "worst-typical case looks like, which matters more for an SLA than the mean.",
-        ),
-        kpi_card_html(
-            "Over SLA", f"{over_sla_count:,}", f"of {total:,} transactions", "#B8792F" if over_sla_count else "#8B9388",
-            f"Count of transactions that took longer than the {SLA_SECONDS}s SLA (C1.1) to return a recommendation.",
-        ),
+    st.subheader("Model quality and response time")
+    st.caption(
+        f"Held-out accuracy was last measured on {LATEST_HELDOUT_ACCURACY_DATE}. "
+        "Live confidence is a separate signal."
+    )
+    quality_metrics = [
+        ("Held-out accuracy", f"{LATEST_HELDOUT_ACCURACY:.0%}", f"Target ≥ {ACCURACY_TARGET:.0%}"),
+        ("Median latency", f"{p50:.0f}ms", "Typical response time"),
+        ("P95 latency", f"{p95:.0f}ms", "Slower 5% of responses"),
+        ("Over SLA", f"{over_sla_count:,}", f"Out of {total:,} transactions"),
     ]
-    st.markdown(f'<div class="kpi-row">{"".join(stat_cards)}</div>', unsafe_allow_html=True)
-    st.write("")
+    for offset in range(0, len(quality_metrics), 4):
+        metric_columns = st.columns(4)
+        for column, (label, value, help_text) in zip(
+            metric_columns, quality_metrics[offset : offset + 4]
+        ):
+            column.metric(label, value, help=help_text, border=True)
 
     if not image_df.empty:
         conf_by_cat = image_df.groupby("category")["confidence"].mean().reset_index()
@@ -764,8 +612,6 @@ with tab_quality:
         .properties(title="Retry rate over time (R1.1.6) — a rising trend can flag lighting or camera issues")
     )
     st.altair_chart(themed(chart, height=200), width="stretch", key="chart_retry_trend")
-    st.divider()
-
     if not image_df.empty:
         chart = (
             alt.Chart(image_df)
@@ -778,10 +624,9 @@ with tab_quality:
             .properties(title="Classifier confidence distribution (image identification only)")
         )
         st.altair_chart(themed(chart, height=260), width="stretch", key="chart_confidence_hist")
-        st.markdown(
-            f'<div class="ws-section-note">C1.2 target: ≥{ACCURACY_TARGET:.0%} held-out test accuracy. '
-            "Live confidence is a proxy signal, not a substitute for the held-out accuracy evaluation.</div>",
-            unsafe_allow_html=True,
+        st.caption(
+            f"Target: ≥{ACCURACY_TARGET:.0%} held-out test accuracy. Live confidence "
+            "does not replace the held-out evaluation."
         )
     else:
         st.info("No image-based transactions in this filter range.")
@@ -822,7 +667,7 @@ with tab_quality:
 
 # --- Raw log ------------------------------------------------------------------
 with tab_log:
-    st.markdown('<div class="ws-section-label">Transaction log</div>', unsafe_allow_html=True)
+    st.subheader("Transaction log")
     st.dataframe(
         df.sort_values("timestamp", ascending=False),
         width="stretch",
@@ -845,8 +690,4 @@ with tab_log:
         mime="text/csv",
     )
 
-st.divider()
-st.caption(
-    "TODO(real-data): once the classify server is deployed and writing to "
-    f"`{DB_PATH}`, this dashboard switches from mock data to the live log automatically."
-)
+st.caption(f"Data source: `{DB_PATH}`")

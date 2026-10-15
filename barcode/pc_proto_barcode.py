@@ -22,6 +22,11 @@ material_keywords = {
     'paper': ['paper', 'wrapper'],
 }
 
+SERVER_URL = os.environ.get(
+    "SMARTSORT_SERVER_URL", "http://127.0.0.1:8000"
+).rstrip("/") + "/api/scan"
+
+
 def determine_material(text_data):
     """Scans API response text for material keywords."""
     if not text_data:
@@ -99,6 +104,27 @@ def lookup_barcode(barcode_data):
         
     return None, None
 
+
+def send_scan_to_server(barcode_data, name, material, decision, latency):
+    """Send the completed scanner lookup to the local transaction receiver."""
+    payload = {
+        "barcode": barcode_data,
+        "item_name": name,
+        "material": material,
+        "category": decision.lower() if decision else None,
+        "latency_ms": round(latency * 1000, 2),
+    }
+    try:
+        response = requests.post(SERVER_URL, json=payload, timeout=2.5)
+        response.raise_for_status()
+    except requests.exceptions.RequestException as error:
+        print(f"Could not send scan to {SERVER_URL}: {error}")
+        return
+
+    result = response.json()
+    print(f"Server recorded scan: {result['status']}")
+
+
 def main():
     cap = cv2.VideoCapture(0)
     print("Smart Sort Barcode Scanner Active. Hold a barcode up to the camera. Press 'q' to quit.")
@@ -134,7 +160,8 @@ def main():
                 start_t = time.time()
                 name, material = lookup_barcode(barcode_data)
                 latency = time.time() - start_t
-                
+
+                decision = None
                 if material and material != "unknown":
                     decision = iowa_city_rules.get(material, "Trash")
                     
@@ -152,7 +179,8 @@ def main():
                     
                     print(f"Lookup failed or material unknown (Item: {name}). Prompting Image Classification.")
                     print(f"Latency: {latency:.2f}s")
-                
+
+                send_scan_to_server(barcode_data, name, material, decision, latency)
                 last_scanned[barcode_data] = current_time
 
         cv2.imshow("Smart Sort - API Barcode Prototype", frame)
