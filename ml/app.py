@@ -3,7 +3,7 @@ Smart Sort Recycling Assistant - Cloud Inference API
 
 Run locally for testing:
     python -m uvicorn app:app --host 0.0.0.0 --port 8000 --log-level debug
-    
+
 View docs:
     http://127.0.0.1:8000/docs
 
