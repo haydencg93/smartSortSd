@@ -19,3 +19,6 @@ ml/tests/heldout_neoavara/images/
 
 # Automatically generated benchmark manifests
 ml/tests/heldout_neoavara/*.csv
+
+# Generated benchmark preview dashboard
+ml/tests/SmartSort_100_Image_Benchmark/SmartSort_100_Image_Report.html
