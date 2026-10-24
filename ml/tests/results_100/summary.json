@@ -1,0 +1,16 @@
+{
+  "counts": {
+    "Passed (Fully)": 71,
+    "Failed": 26,
+    "Passed (w/ Concern)": 3
+  },
+  "average_ms": 36.47987399999465,
+  "accuracy_both": 0.74,
+  "total": 100,
+  "automatically_labeled": 100,
+  "label_certification": "provisional material policy; not verified Iowa City item-level ground truth",
+  "threshold_ms": 2500,
+  "confidence_threshold": 0.75,
+  "device": "cpu",
+  "created": "2026-10-12T22:13:20.201461+00:00"
+}
