@@ -2,3 +2,13 @@ ml/data
 ml/data_6class
 ml/raw_data
 ml/__pycache__
+
+# Python-generated files
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Temporary files and logs
+*.log
+ml/git_status.txt
+*.csv.bak
