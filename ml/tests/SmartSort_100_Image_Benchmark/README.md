@@ -1,71 +1,455 @@
-# UPDATED: Automatic bin-label generation
+# Smart Sort — 100-Image ML Benchmark
 
-`prepare_neoavara.py` now fills `expected_bin`, `reviewed=auto`, `reviewer`, `rule_source` and `notes` automatically. It uses material-level routing for a standard Iowa City recycling bin: cardboard/metal/paper/plastic = recycling; glass/trash = trash. **These are provisional assumptions, not verified item-by-item ground truth** (especially plastic subtype, cleanliness and material condition). The HTML report displays an explicit warning and `summary.json` records the count of auto-labeled images. Do not present the combined result as verified Iowa City disposal accuracy until independently reviewing the relevant items. Glass bottles/jars can be recycled at separate drop-off locations. Existing manifest files are not overwritten.
+An independent, image-only benchmarking framework for evaluating the Smart Sort Recycling Assistant's six-class MobileNetV2 classification model.
 
-If you already prepared the 100 images, you do not need to redownload them: run `python SmartSort_100_Image_Benchmark/autofill_manifest.py --manifest heldout_neoavara/manifest.csv`. Backups are created automatically.
+The benchmark measures material classification, provisional disposal-routing agreement, prediction confidence, and image-processing latency across 100 photographs.
 
-# Smart Sort — 100-image ML-only benchmark
+**The benchmark does not modify the existing `app.py`, `train_data.py`, `setup_data.py`, or `.pth` model checkpoint files.**
 
-**Existing `app.py`, `train_data.py`, `setup_data.py` and `.pth` files are not modified.**
+## 1. Dataset source and licensing
 
-## Source and labeling warning
+The benchmark uses photographs obtained from the third-party [NeoAivara/Waste_Classification_data](https://huggingface.co/datasets/NeoAivara/Waste_Classification_data) dataset hosted on Hugging Face.
 
-- Dataset: [NeoAivara/Waste_Classification_data](https://huggingface.co/datasets/NeoAivara/Waste_Classification_data) (Hugging Face; **Apache 2.0 is claimed by uploader**, but underlying original-image rights and overlap with TrashNet/other sources are not independently established).
-- 15,515 total records, 12 original categories. We reserve 100 examples across six material classes (20 cardboard, 20 glass, 20 metal, 20 paper, 10 plastic, 10 trash), using the uploader's class labels.
-- This dataset does **not** supply verified Iowa City disposal labels. The generated manifest intentionally leaves `expected_bin` blank and `reviewed=no`.
-- **You must visually inspect every image and check the item against current [Iowa City recycling guidance](https://www.icgov.org/government/departments-and-divisions/public-works/resource-management/recycling)**, noting cleanliness, shape, accepted item type, and whether your intended installation is a standard public bin or other collection route. Record `expected_bin` (`recycling`/`trash`), `reviewed=yes`, `reviewer`, `rule_source` (link or local documented rule), and an **item-specific** `notes` justification. If a photograph is ambiguous, replace it with a different image of the same material; do not mark it "Ignored".
-- Do not use these 100 images for model training, validation, hyperparameter selection, or confidence tuning. They are a fixed holdout. If any image was used during original pretraining, it is not an independent sample; source provenance must be audited. Hash checks find byte-for-byte overlaps, but cannot prove independence from visually similar images or unknown previous training images.
-- `plastic → recycling` in your **existing model's fixed rules** is a simplification. The benchmark keeps that actual prediction for comparison, and **uses separately reviewed Iowa City bin ground truth**; thus incorrect route decisions fail, even if material is correct.
+Dataset information:
 
-## Install
+- **Source:** `NeoAivara/Waste_Classification_data`
+- **Platform:** Hugging Face
+- **Advertised license:** Apache 2.0
+- **Reported dataset size:** 15,515 records across 12 original categories
+- **Benchmark sample:** 100 photographs mapped into six Smart Sort material classes
+
+The upstream dataset advertises an Apache 2.0 license. However, the original ownership and redistribution rights of the underlying photographs have not been independently verified.
+
+For this reason, **the downloaded photographs are not distributed through this Git repository.**
+
+Developers must obtain the images directly from the upstream dataset and comply with its applicable licensing, attribution, and usage terms.
+
+This repository's inclusion of dataset preparation scripts and evaluation metadata does not constitute a guarantee of third-party image redistribution rights.
+
+## 2. Benchmark dataset composition
+
+The benchmark evaluates exactly 100 images distributed across six material classes.
+
+| Material | Images |
+|---|---:|
+| Cardboard | 20 |
+| Glass | 20 |
+| Metal | 20 |
+| Paper | 20 |
+| Plastic | 10 |
+| Trash | 10 |
+| **Total** | **100** |
+
+The preparation script uses a fixed random seed (`20261012`) when selecting samples.
+
+Images are saved as JPEG files and referenced by the generated benchmark manifest.
+
+The source dataset's original material categories are mapped to the six classes supported by the existing Smart Sort model.
+
+**Dataset independence is not guaranteed.** The upstream dataset may contain images also found in TrashNet or other publicly available datasets. Exact SHA-256 duplicate checking can identify identical image files when training hashes are available, but cannot establish complete independence from unknown training sources, transformed duplicates, or original model pretraining.
+
+The benchmark images must not be used for model training, validation, hyperparameter selection, or confidence-threshold tuning if they are to remain a fixed evaluation set.
+
+## 3. Downloaded images and Git tracking
+
+### Files generated by dataset preparation
+
+Running `prepare_neoavara.py` creates the following files:
+
+| Path | Description | Git treatment |
+|---|---|---|
+| `heldout_neoavara/images/` | Downloaded benchmark JPEG photographs | Ignored |
+| `heldout_neoavara/manifest.csv` | Image references, source indices, hashes, expected materials, and provisional labels | Existing benchmark manifest tracked |
+
+The downloaded photographs are excluded by the repository's root `.gitignore`:
+
+```gitignore
+# Third-party benchmark photographs
+ml/tests/heldout_neoavara/images/
+```
+
+This prevents the 100 third-party photographs from being accidentally committed or pushed to GitHub.
+
+Ignoring these files does not delete them from a developer's computer. They remain available locally for benchmarking.
+
+### Manifest tracking
+
+The existing `manifest.csv` is committed as part of the recorded benchmark evidence.
+
+The manifest contains:
+
+- Test identifiers and image filenames
+- Expected material classifications
+- Expected disposal-bin classifications
+- Label review status and reviewer information
+- Disposal-rule sources and explanatory notes
+- Original source dataset and record indices
+- SHA-256 hashes for integrity verification
+
+Although the manifest is generated by the preparation script, retaining the existing committed version documents the image selection used for the recorded evaluation.
+
+The preparation script does not overwrite an existing manifest.
+
+**Important:** Because `manifest.csv` is already tracked, a freshly cloned repository contains this file even though the photographs themselves are excluded.
+
+The current preparation script will refuse to generate a new dataset while that manifest exists. Developers must move or temporarily remove the existing manifest before running a new preparation operation.
+
+## 4. Automatic disposal-label generation
+
+`prepare_neoavara.py` automatically fills the following manifest fields:
+
+- `expected_bin`
+- `reviewed=auto`
+- `reviewer`
+- `rule_source`
+- `notes`
+
+These values are generated using material-level disposal assumptions for a standard Iowa City recycling bin.
+
+| Material | Provisional expected bin |
+|---|---|
+| Cardboard | Recycling |
+| Glass | Trash |
+| Metal | Recycling |
+| Paper | Recycling |
+| Plastic | Recycling |
+| Trash | Trash |
+
+**These are provisional material-level assumptions, not independently verified item-level disposal decisions.**
+
+Actual disposal eligibility can depend on material subtype, contamination, cleanliness, physical condition, and the specific collection program.
+
+In particular:
+
+- Some plastic products are not accepted in standard recycling.
+- Contaminated paper or cardboard may not be recyclable.
+- Glass bottles and jars may be accepted at separate drop-off locations even when glass is excluded from standard public recycling bins.
+- An image's material label alone cannot establish whether the photographed object is accepted for recycling.
+
+Refer to the applicable [Iowa City recycling guidance](https://www.icgov.org/government/departments-and-divisions/public-works/resource-management/recycling) when independently verifying an item.
+
+The existing model uses a fixed material-to-bin mapping. The benchmark records this actual routing behavior rather than replacing it with a different policy.
+
+When labels are automatically generated, an agreement between the predicted disposal bin and `expected_bin` measures agreement with the provisional routing rules, **not independently verified Iowa City disposal accuracy**.
+
+### Independently verifying disposal labels
+
+To assess item-level disposal accuracy:
+
+1. Visually inspect each benchmark photograph.
+2. Determine the photographed item's eligibility under the applicable Iowa City disposal rules.
+3. Record the appropriate `expected_bin` value.
+4. Set `reviewed=yes` after completing the review.
+5. Identify the responsible reviewer.
+6. Record the relevant policy or disposal-rule source.
+7. Add an item-specific justification in `notes`.
+
+If the photograph is ambiguous, replace it with another suitable image rather than treating the item as automatically verified.
+
+The benchmark's `Ignored` status is reserved for future functionality and must not be used to exclude difficult or incorrectly classified images.
+
+### Updating an existing manifest
+
+If the 100 photographs have already been prepared but the manifest needs provisional material-based labels, run the following from `ml/tests/`:
+
+```bash
+python SmartSort_100_Image_Benchmark/autofill_manifest.py --manifest heldout_neoavara/manifest.csv
+```
+
+The script creates a `.bak` backup before modifying the manifest and preserves manually reviewed entries unless explicitly instructed otherwise.
+
+**Automatic labeling is not a substitute for independent verification.**
+
+## 5. Installation
+
+Install the benchmark dependencies:
 
 ```bash
 python -m pip install torch torchvision pillow matplotlib datasets pytest
 ```
 
-## Use (from a directory containing your existing checkpoint)
+The benchmark requires the existing six-class model checkpoint:
+
+```text
+smart_sort_mobilenetv2_6class.pth
+```
+
+The evaluation uses the existing trained model and does not retrain or modify it.
+
+GPU inference is optional through `--device cuda` when supported by the installed PyTorch environment.
+
+## 6. Running the benchmark
+
+The following instructions assume commands are executed from the `ml/tests/` directory, with the checkpoint located in the parent `ml/` directory.
+
+### Step 1 — Obtain the dataset locally
+
+If starting without a manifest, run:
 
 ```bash
-# 1. Download and select 100 sample images — needs internet and may take a while
 python SmartSort_100_Image_Benchmark/prepare_neoavara.py --out heldout_neoavara
+```
 
-# 2. Open heldout_neoavara/manifest.csv. Inspect all 100 images and complete
-#    reviewed, reviewer, expected_bin, rule_source, item-specific notes.
-#    A missing review is a STOP/validation error, NOT "Ignored".
+This downloads the upstream dataset, selects 100 samples, writes the photographs into `heldout_neoavara/images/`, and generates `heldout_neoavara/manifest.csv`.
 
-# 3. Optional, strongly recommended: generate hashes from known original training
-#    and new training roots before running. Include ALL accessible train+val images.
-python SmartSort_100_Image_Benchmark/hash_training.py data_6class expanded_data --output training_hashes.txt
+**Important for fresh repository clones:** The repository already includes the manifest used for the recorded benchmark. The current preparation script refuses to overwrite that file.
 
-# 4. Run EXACTLY 100 images on the existing six-class model
+Before generating a new dataset, move or temporarily remove the existing manifest. Preserve a copy if you wish to compare the new selection against the originally recorded benchmark.
+
+The fixed random seed helps make selection repeatable, but identical results depend on the upstream dataset preserving its content and record ordering.
+
+### Step 2 — Inspect the manifest
+
+Open:
+
+```text
+heldout_neoavara/manifest.csv
+```
+
+Verify the image filenames, material categories, source indices, and provisional labels.
+
+Automatically generated labels are marked `reviewed=auto`.
+
+If the goal is independently verified item-level disposal accuracy, inspect all 100 photographs and document the appropriate recycling decisions before relying on the results for that purpose.
+
+The benchmark permits provisional auto-generated labels but reports their limitations.
+
+### Step 3 — Generate training-image hashes
+
+To check for exact overlap with accessible training and validation images, generate a SHA-256 inventory:
+
+```bash
+python SmartSort_100_Image_Benchmark/hash_training.py ../data_6class ../raw_data --output training_hashes.txt
+```
+
+The example assumes those source directories are available locally.
+
+Include all known relevant training and validation image roots when generating hashes. Adjust the command to match the directories actually used by your model.
+
+These hashes allow the benchmark to reject byte-identical overlaps with supplied training images.
+
+However, exact hash comparisons cannot detect all visually similar images, modified duplicates, or overlap with unknown training sources.
+
+### Step 4 — Run the 100-image benchmark
+
+From `ml/tests/`, execute:
+
+```bash
 python SmartSort_100_Image_Benchmark/benchmark.py \
   --manifest heldout_neoavara/manifest.csv \
   --images heldout_neoavara/images \
-  --checkpoint smart_sort_mobilenetv2_6class.pth \
+  --checkpoint ../smart_sort_mobilenetv2_6class.pth \
   --training-hashes training_hashes.txt \
   --output results_100
+```
 
-# Test status logic without downloading images
+The benchmark:
+
+- Validates the 100-image manifest.
+- Checks required material classes and minimum image counts.
+- Rejects duplicate benchmark images.
+- Checks supplied training hashes when available.
+- Loads the six-class MobileNetV2 model.
+- Executes image preprocessing and inference.
+- Records predicted material and disposal bin.
+- Measures per-image processing latency.
+- Records model confidence and classification outcomes.
+- Produces individual results, aggregate metrics, and an HTML report.
+
+The training-hash check is optional in the software but strongly recommended for evaluation integrity.
+
+### Windows PowerShell
+
+PowerShell uses backticks instead of Bash backslashes for multiline commands:
+
+```powershell
+python SmartSort_100_Image_Benchmark/benchmark.py `
+  --manifest heldout_neoavara/manifest.csv `
+  --images heldout_neoavara/images `
+  --checkpoint ../smart_sort_mobilenetv2_6class.pth `
+  --training-hashes training_hashes.txt `
+  --output results_100
+```
+
+### Step 5 — Run the benchmark tests
+
+```bash
 python -m pytest SmartSort_100_Image_Benchmark/tests -v
 ```
 
-For Windows PowerShell, write the long `benchmark.py` command on one line instead of using `\` continuations. GPU optional: `--device cuda` if PyTorch supports CUDA.
+These tests validate benchmark status logic and selected manifest error handling without requiring the photographs to be downloaded.
 
-## Generated outputs
+## 7. Generated benchmark outputs
 
-- `results_100/SmartSort_100_Image_Report.html` — **offline, self-contained HTML report** with thumbnails, status cards, bar charts of **all 100 timings**, pie chart of status distribution, bar chart of **all 100 confidences**, and searchable/filterable 100-row table with expected/predicted material and bin, latency, confidence and concern/failure explanation.
-- `results_100/results.csv` — raw item-level records.
-- `results_100/summary.json` — aggregated statistics and thresholds.
+A successful benchmark run produces:
 
-## Four color statuses
+| File | Description |
+|---|---|
+| `results_100/results.csv` | Individual image predictions, confidence scores, latency measurements, expected labels, and outcomes |
+| `results_100/summary.json` | Aggregate outcome counts, timing statistics, thresholds, and labeling metadata |
+| `results_100/SmartSort_100_Image_Report.html` | Self-contained visual benchmark report |
+
+The HTML report includes:
+
+- Per-status result summaries
+- Average image-processing latency
+- Material and provisional disposal agreement
+- Response-time measurements for all 100 images
+- Model confidence for all 100 images
+- Outcome-distribution charts
+- Expected and predicted material/bin labels
+- Per-image failure and concern explanations
+- Image previews embedded directly in the report
+- Searchable and filterable result tables
+
+The report explicitly identifies automatically generated disposal labels and their limitations.
+
+### Rebuilding the interactive report
+
+The existing results can be rendered again without rerunning model inference:
+
+```bash
+python SmartSort_100_Image_Benchmark/generate_report_from_csv.py --results results_100 --images heldout_neoavara/images
+```
+
+This reconstructs the HTML report from saved CSV measurements and adds interactive material-class breakdowns and filtering.
+
+The regenerated report uses the local images for thumbnails. If the images have not been downloaded, previews may be unavailable, although the saved numerical results can still be used.
+
+The report-generation script does not download photographs or restore the original benchmark dataset.
+
+## 8. Benchmark status definitions
+
+Each image receives one of four possible statuses.
 
 | Status | Condition | Color |
 |---|---|---|
-| Passed (Fully) | Correct material AND Iowa City bin; confidence ≥75% AND latency ≤2500 ms | GREEN |
-| Passed (w/ Concern) | Both correct; confidence <75% **or** latency >2500 ms | BLUE |
-| Failed | Wrong material, wrong bin, or model inference error, regardless of confidence/time | RED |
-| Ignored | **Reserved for future functionality only**; never generated by the current 100-image benchmark | YELLOW |
+| Passed (Fully) | Correct material and expected bin, confidence ≥75%, and processing latency ≤2500 ms | Green |
+| Passed (w/ Concern) | Correct material and expected bin, but confidence below 75% or processing latency above 2500 ms | Blue |
+| Failed | Incorrect material, incorrect expected bin, or model inference error | Red |
+| Ignored | Reserved for future functionality; never generated by the current benchmark | Yellow |
 
-**Latency** starts immediately before opening/decoding an image, includes resize/normalization and model forward pass, and ends after extracting the predicted material/bin. It excludes loading the checkpoint, network transfer, camera capture, physical display and HTML generation. The first image might take longer due to cold initialization. Report clearly labels this as *image processing plus model inference*, not complete physical-device response time.
+A prediction is only considered successful when both the material and expected disposal-bin classifications match the manifest.
 
-**No measured 100-image results are included until the real images and item-level ground truth have been reviewed.** The report is generated only when the 100-image test is actually run.
+For provisional labels, a successful bin comparison must not be interpreted as independently verified real-world disposal accuracy.
+
+The 75% confidence threshold determines whether an otherwise correct prediction receives a concern status. It does not establish that a prediction has a 75% probability of being correct.
+
+All 100 evaluated images contribute to the benchmark's outcome calculations.
+
+## 9. Latency measurement
+
+Benchmark latency begins immediately before opening and decoding each image.
+
+The measurement includes:
+
+- Image decoding and conversion
+- Image resizing and normalization
+- Input tensor preparation
+- Model forward inference
+- Prediction and confidence extraction
+
+The measurement excludes:
+
+- Model checkpoint loading
+- Camera capture
+- Network transfer
+- ESP32 communication
+- Physical sensors
+- LCD output
+- HTML report generation
+
+The first image may take longer due to initial execution overhead.
+
+**Benchmark latency represents image processing and model inference, not complete physical-device response time.**
+
+Therefore, meeting the 2500 ms benchmark threshold does not automatically demonstrate compliance with an end-to-end physical-system response-time requirement.
+
+## 10. Recorded 100-image benchmark results
+
+The repository includes recorded benchmark measurements from October 12, 2026.
+
+| Metric | Recorded result |
+|---|---:|
+| Images evaluated | 100 |
+| Passed (Fully) | 71 |
+| Passed (w/ Concern) | 3 |
+| Failed | 26 |
+| Ignored | 0 |
+| Combined material/provisional bin agreement | 74% |
+| Average measured processing time | 36.48 ms |
+| Automatically generated disposal labels | 100 |
+| Inference device | CPU |
+
+These figures describe the recorded evaluation of the existing six-class checkpoint under the test environment used for that run.
+
+**All 100 expected disposal-bin labels were automatically generated from material-level routing rules.**
+
+Accordingly, the 74% result is agreement with the manifest's material labels and provisional routing expectations. It is not independently verified Iowa City item-level disposal accuracy.
+
+The recorded benchmark also does not establish complete independence from all model training or pretraining data.
+
+## 11. Reproducibility and known limitations
+
+The benchmark is designed to support repeatable evaluation, but several limitations remain.
+
+### Dataset availability
+
+The benchmark photographs are not hosted in this repository. Developers must obtain them from the upstream third-party source.
+
+### Original image selection
+
+The repository retains source dataset indices and SHA-256 hashes in the recorded manifest.
+
+However, the current preparation script does not provide an option to restore the exact original 100 images directly from the committed manifest.
+
+Generating a new dataset may produce different files if the upstream dataset changes.
+
+### Existing manifest behavior
+
+The preparation script refuses to overwrite an existing `manifest.csv`. This protects existing labels and recorded selections but requires developers to move or temporarily remove the tracked manifest before creating a new dataset.
+
+### Dataset independence
+
+Exact hash checks can detect byte-identical duplicates against supplied training data, but cannot rule out unknown pretraining overlap or altered versions of previously seen images.
+
+### Disposal policy ground truth
+
+Automatic material-based routing labels are provisional and may not reflect item-specific recycling requirements.
+
+Independently verified item-level labels are necessary before presenting results as actual local disposal accuracy.
+
+### Confidence interpretation
+
+Softmax confidence is not automatically a calibrated probability that a prediction is correct.
+
+### System-level performance
+
+The benchmark does not measure camera capture, physical sensors, network communication, or display operation. Its results cannot independently certify complete physical-device performance.
+
+## 12. Future improvements
+
+Potential improvements include:
+
+- Downloading exact benchmark records directly from committed manifest indices.
+- Verifying downloaded files against recorded SHA-256 hashes.
+- Supporting pinned upstream dataset revisions.
+- Resolving original photograph licensing and provenance.
+- Adding independently reviewed Iowa City item-level disposal labels.
+- Expanding the benchmark to separately sourced, independently verified evaluation datasets.
+- Testing real physical-device response time.
+- Automating dataset integrity and reproducibility checks.
+
+These enhancements are not implemented by the current dataset preparation script.
+
+---
+
+## Summary
+
+The Smart Sort 100-image benchmark provides a reproducible evaluation framework for measuring the behavior of the existing six-class MobileNetV2 model.
+
+The repository preserves benchmark source code, test methodology, a recorded manifest, evaluation statistics, and report-generation utilities while excluding downloaded third-party photographs from Git.
+
+Developers acquire images locally from the upstream source, subject to its licensing and usage terms.
+
+**The recorded results are genuine model measurements, but the disposal labels are provisional and the underlying dataset's complete independence from training data has not been established.**
