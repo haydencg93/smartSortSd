@@ -11,4 +11,8 @@ __pycache__/
 # Temporary files and logs
 *.log
 ml/git_status.txt
-*.csv.bak
+*.csv.
+
+# Locally downloaded benchmark images
+# Regenerate using prepare_neoavara.py
+ml/tests/heldout_neoavara/images/
