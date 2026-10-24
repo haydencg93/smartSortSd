@@ -1,0 +1,13 @@
+pattern,classification,confidence,material,latency_ms,asgi_round_trip_ms
+solid white,trash,0.1963,trash,54.3,58.8
+solid black,trash,0.1748,trash,32.5,36.11
+solid red,trash,0.19,trash,35.0,38.54
+solid blue,recycling,0.9994,cardboard,32.4,36.05
+solid green,trash,0.1889,trash,32.2,35.77
+solid brown,trash,0.3286,trash,34.2,37.63
+solid gray,trash,0.1843,trash,31.6,35.01
+solid yellow,recycling,0.175,metal,32.1,36.2
+circle on white,trash,0.1843,trash,33.5,37.2
+rectangle on white,recycling,0.7256,paper,33.4,37.05
+stripes,recycling,0.9999,paper,32.2,35.92
+noise,recycling,0.9965,cardboard,35.6,42.05

@@ -1,0 +1,25 @@
+{
+  "health": true,
+  "valid_images": 12,
+  "invalid_cases": {
+    "wrong content-type": {
+      "observed": 400,
+      "expected": 400,
+      "pass_test": true
+    },
+    "fake image": {
+      "observed": 400,
+      "expected": 400,
+      "pass_test": true
+    }
+  },
+  "synthetic_images_are_not_accuracy_data": true,
+  "asgi_latency_ms": {
+    "p50": 36.62,
+    "p95": 49.59,
+    "p99": 56.96
+  },
+  "server_reported_latency_ms_p95": 44.01,
+  "all_synthetic_requests_under_5sec": true,
+  "note": "In-process ASGI TestClient timings exclude physical camera capture, network, proximity activation and LCD display; no accuracy measured."
+}
