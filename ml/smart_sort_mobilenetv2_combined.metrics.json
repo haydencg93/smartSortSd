@@ -1,0 +1,495 @@
+{
+  "classes": [
+    "cardboard",
+    "celluloseacetate",
+    "glass",
+    "metal",
+    "paper",
+    "plastic",
+    "polystyrene",
+    "rubber",
+    "tetrapak",
+    "textile",
+    "trash"
+  ],
+  "best_val_macro_f1": 0.649833083152771,
+  "history": [
+    {
+      "epoch": 1,
+      "train_loss": 1.1507995887629885,
+      "val_accuracy": 0.4481818181818182,
+      "val_macro_f1": 0.4266507029533386,
+      "val_recall_by_class": {
+        "cardboard": 0.5679012537002563,
+        "celluloseacetate": 0.0,
+        "glass": 0.8026315569877625,
+        "metal": 0.6181818246841431,
+        "paper": 0.3206106722354889,
+        "plastic": 0.2259887009859085,
+        "polystyrene": 0.2857142984867096,
+        "rubber": 1.0,
+        "tetrapak": 0.6470588445663452,
+        "textile": 0.9166666865348816,
+        "trash": 0.8148148059844971
+      }
+    },
+    {
+      "epoch": 2,
+      "train_loss": 0.5065508061219735,
+      "val_accuracy": 0.6327272727272727,
+      "val_macro_f1": 0.5564418435096741,
+      "val_recall_by_class": {
+        "cardboard": 0.6790123581886292,
+        "celluloseacetate": 0.0,
+        "glass": 0.5394737124443054,
+        "metal": 0.5939394235610962,
+        "paper": 0.5190839767456055,
+        "plastic": 0.7542372941970825,
+        "polystyrene": 0.2857142984867096,
+        "rubber": 1.0,
+        "tetrapak": 0.6176470518112183,
+        "textile": 0.9166666865348816,
+        "trash": 0.8148148059844971
+      }
+    },
+    {
+      "epoch": 3,
+      "train_loss": 0.3601219805666363,
+      "val_accuracy": 0.6518181818181819,
+      "val_macro_f1": 0.569784939289093,
+      "val_recall_by_class": {
+        "cardboard": 0.7654321193695068,
+        "celluloseacetate": 0.0,
+        "glass": 0.6644737124443054,
+        "metal": 0.7515151500701904,
+        "paper": 0.6183205842971802,
+        "plastic": 0.590395450592041,
+        "polystyrene": 0.2857142984867096,
+        "rubber": 1.0,
+        "tetrapak": 0.5882353186607361,
+        "textile": 0.9166666865348816,
+        "trash": 0.8888888955116272
+      }
+    },
+    {
+      "epoch": 4,
+      "train_loss": 0.2869940674326617,
+      "val_accuracy": 0.6481818181818182,
+      "val_macro_f1": 0.5217075943946838,
+      "val_recall_by_class": {
+        "cardboard": 0.7407407164573669,
+        "celluloseacetate": 0.0,
+        "glass": 0.5723684430122375,
+        "metal": 0.7030302882194519,
+        "paper": 0.572519063949585,
+        "plastic": 0.6807909607887268,
+        "polystyrene": 0.2857142984867096,
+        "rubber": 1.0,
+        "tetrapak": 0.6470588445663452,
+        "textile": 1.0,
+        "trash": 0.7777777910232544
+      }
+    },
+    {
+      "epoch": 5,
+      "train_loss": 0.2619121184032901,
+      "val_accuracy": 0.6681818181818182,
+      "val_macro_f1": 0.6014496088027954,
+      "val_recall_by_class": {
+        "cardboard": 0.8271604776382446,
+        "celluloseacetate": 0.0,
+        "glass": 0.7236841917037964,
+        "metal": 0.7090908885002136,
+        "paper": 0.4885496199131012,
+        "plastic": 0.7033898234367371,
+        "polystyrene": 0.2857142984867096,
+        "rubber": 1.0,
+        "tetrapak": 0.7647058963775635,
+        "textile": 0.9166666865348816,
+        "trash": 0.8518518805503845
+      }
+    },
+    {
+      "epoch": 6,
+      "train_loss": 0.20748573538257684,
+      "val_accuracy": 0.6836363636363636,
+      "val_macro_f1": 0.565341591835022,
+      "val_recall_by_class": {
+        "cardboard": 0.7777777910232544,
+        "celluloseacetate": 0.0,
+        "glass": 0.7828947305679321,
+        "metal": 0.6000000238418579,
+        "paper": 0.6564885377883911,
+        "plastic": 0.6779661178588867,
+        "polystyrene": 0.2857142984867096,
+        "rubber": 1.0,
+        "tetrapak": 0.5588235259056091,
+        "textile": 1.0,
+        "trash": 0.8888888955116272
+      }
+    },
+    {
+      "epoch": 7,
+      "train_loss": 0.17103762199237713,
+      "val_accuracy": 0.7145454545454546,
+      "val_macro_f1": 0.594760000705719,
+      "val_recall_by_class": {
+        "cardboard": 0.7407407164573669,
+        "celluloseacetate": 0.0,
+        "glass": 0.6973684430122375,
+        "metal": 0.7212121486663818,
+        "paper": 0.6832060813903809,
+        "plastic": 0.7429378628730774,
+        "polystyrene": 0.2857142984867096,
+        "rubber": 1.0,
+        "tetrapak": 0.6470588445663452,
+        "textile": 0.9166666865348816,
+        "trash": 0.8148148059844971
+      }
+    },
+    {
+      "epoch": 8,
+      "train_loss": 0.17152469224219535,
+      "val_accuracy": 0.7245454545454545,
+      "val_macro_f1": 0.6268852949142456,
+      "val_recall_by_class": {
+        "cardboard": 0.6913580298423767,
+        "celluloseacetate": 0.0,
+        "glass": 0.6184210777282715,
+        "metal": 0.7151514887809753,
+        "paper": 0.7900763154029846,
+        "plastic": 0.7570621371269226,
+        "polystyrene": 0.2857142984867096,
+        "rubber": 1.0,
+        "tetrapak": 0.47058823704719543,
+        "textile": 0.9166666865348816,
+        "trash": 0.8518518805503845
+      }
+    },
+    {
+      "epoch": 9,
+      "train_loss": 0.1295519624578747,
+      "val_accuracy": 0.7018181818181818,
+      "val_macro_f1": 0.5826873779296875,
+      "val_recall_by_class": {
+        "cardboard": 0.790123462677002,
+        "celluloseacetate": 0.0,
+        "glass": 0.7434210777282715,
+        "metal": 0.6848484873771667,
+        "paper": 0.5114504098892212,
+        "plastic": 0.8389830589294434,
+        "polystyrene": 0.2857142984867096,
+        "rubber": 1.0,
+        "tetrapak": 0.5882353186607361,
+        "textile": 0.9166666865348816,
+        "trash": 0.5925925970077515
+      }
+    },
+    {
+      "epoch": 10,
+      "train_loss": 0.129749084344061,
+      "val_accuracy": 0.7254545454545455,
+      "val_macro_f1": 0.6132776737213135,
+      "val_recall_by_class": {
+        "cardboard": 0.604938268661499,
+        "celluloseacetate": 0.0,
+        "glass": 0.7631579041481018,
+        "metal": 0.6969696879386902,
+        "paper": 0.7366412281990051,
+        "plastic": 0.7796609997749329,
+        "polystyrene": 0.2857142984867096,
+        "rubber": 1.0,
+        "tetrapak": 0.5588235259056091,
+        "textile": 0.9166666865348816,
+        "trash": 0.5555555820465088
+      }
+    },
+    {
+      "epoch": 11,
+      "train_loss": 0.11291953139040926,
+      "val_accuracy": 0.7527272727272727,
+      "val_macro_f1": 0.6261061429977417,
+      "val_recall_by_class": {
+        "cardboard": 0.8765432238578796,
+        "celluloseacetate": 0.0,
+        "glass": 0.7631579041481018,
+        "metal": 0.7030302882194519,
+        "paper": 0.7480915784835815,
+        "plastic": 0.7881355881690979,
+        "polystyrene": 0.2857142984867096,
+        "rubber": 1.0,
+        "tetrapak": 0.5,
+        "textile": 0.9166666865348816,
+        "trash": 0.6666666865348816
+      }
+    },
+    {
+      "epoch": 12,
+      "train_loss": 0.08728791724596102,
+      "val_accuracy": 0.7354545454545455,
+      "val_macro_f1": 0.6131478548049927,
+      "val_recall_by_class": {
+        "cardboard": 0.7037037014961243,
+        "celluloseacetate": 0.0,
+        "glass": 0.7763158082962036,
+        "metal": 0.7818182110786438,
+        "paper": 0.7938931584358215,
+        "plastic": 0.6836158037185669,
+        "polystyrene": 0.2857142984867096,
+        "rubber": 1.0,
+        "tetrapak": 0.529411792755127,
+        "textile": 1.0,
+        "trash": 0.7777777910232544
+      }
+    },
+    {
+      "epoch": 13,
+      "train_loss": 0.09001867630460607,
+      "val_accuracy": 0.7545454545454545,
+      "val_macro_f1": 0.6239303350448608,
+      "val_recall_by_class": {
+        "cardboard": 0.6666666865348816,
+        "celluloseacetate": 0.0,
+        "glass": 0.7565789222717285,
+        "metal": 0.7515151500701904,
+        "paper": 0.7099236845970154,
+        "plastic": 0.8502824902534485,
+        "polystyrene": 0.2857142984867096,
+        "rubber": 1.0,
+        "tetrapak": 0.44117647409439087,
+        "textile": 0.9166666865348816,
+        "trash": 0.7407407164573669
+      }
+    },
+    {
+      "epoch": 14,
+      "train_loss": 0.07600856307965045,
+      "val_accuracy": 0.7345454545454545,
+      "val_macro_f1": 0.6146966218948364,
+      "val_recall_by_class": {
+        "cardboard": 0.6296296119689941,
+        "celluloseacetate": 0.0,
+        "glass": 0.6381579041481018,
+        "metal": 0.7454545497894287,
+        "paper": 0.767175555229187,
+        "plastic": 0.8022598624229431,
+        "polystyrene": 0.2857142984867096,
+        "rubber": 1.0,
+        "tetrapak": 0.529411792755127,
+        "textile": 0.9166666865348816,
+        "trash": 0.7037037014961243
+      }
+    },
+    {
+      "epoch": 15,
+      "train_loss": 0.07455431344452823,
+      "val_accuracy": 0.74,
+      "val_macro_f1": 0.6329540014266968,
+      "val_recall_by_class": {
+        "cardboard": 0.7160493731498718,
+        "celluloseacetate": 0.0,
+        "glass": 0.7894737124443054,
+        "metal": 0.739393949508667,
+        "paper": 0.6641221642494202,
+        "plastic": 0.805084764957428,
+        "polystyrene": 0.2857142984867096,
+        "rubber": 1.0,
+        "tetrapak": 0.5882353186607361,
+        "textile": 0.9166666865348816,
+        "trash": 0.7407407164573669
+      }
+    },
+    {
+      "epoch": 16,
+      "train_loss": 0.06369751837987665,
+      "val_accuracy": 0.7527272727272727,
+      "val_macro_f1": 0.6372231841087341,
+      "val_recall_by_class": {
+        "cardboard": 0.6790123581886292,
+        "celluloseacetate": 0.0,
+        "glass": 0.7763158082962036,
+        "metal": 0.7454545497894287,
+        "paper": 0.7175572514533997,
+        "plastic": 0.8333333134651184,
+        "polystyrene": 0.2857142984867096,
+        "rubber": 1.0,
+        "tetrapak": 0.5,
+        "textile": 0.9166666865348816,
+        "trash": 0.6296296119689941
+      }
+    },
+    {
+      "epoch": 17,
+      "train_loss": 0.06755653124718802,
+      "val_accuracy": 0.7418181818181818,
+      "val_macro_f1": 0.6350890398025513,
+      "val_recall_by_class": {
+        "cardboard": 0.7160493731498718,
+        "celluloseacetate": 0.0,
+        "glass": 0.7697368264198303,
+        "metal": 0.6848484873771667,
+        "paper": 0.6755725145339966,
+        "plastic": 0.8615819215774536,
+        "polystyrene": 0.2857142984867096,
+        "rubber": 1.0,
+        "tetrapak": 0.4117647111415863,
+        "textile": 0.9166666865348816,
+        "trash": 0.6296296119689941
+      }
+    },
+    {
+      "epoch": 18,
+      "train_loss": 0.0625721111946099,
+      "val_accuracy": 0.7545454545454545,
+      "val_macro_f1": 0.6227759718894958,
+      "val_recall_by_class": {
+        "cardboard": 0.6666666865348816,
+        "celluloseacetate": 0.0,
+        "glass": 0.7368420958518982,
+        "metal": 0.7151514887809753,
+        "paper": 0.7213740348815918,
+        "plastic": 0.8672316670417786,
+        "polystyrene": 0.2857142984867096,
+        "rubber": 1.0,
+        "tetrapak": 0.529411792755127,
+        "textile": 0.9166666865348816,
+        "trash": 0.6296296119689941
+      }
+    },
+    {
+      "epoch": 19,
+      "train_loss": 0.05196227400067121,
+      "val_accuracy": 0.7454545454545455,
+      "val_macro_f1": 0.6187140941619873,
+      "val_recall_by_class": {
+        "cardboard": 0.7037037014961243,
+        "celluloseacetate": 0.0,
+        "glass": 0.6907894611358643,
+        "metal": 0.7757575511932373,
+        "paper": 0.7137404680252075,
+        "plastic": 0.8333333134651184,
+        "polystyrene": 0.2857142984867096,
+        "rubber": 1.0,
+        "tetrapak": 0.47058823704719543,
+        "textile": 0.9166666865348816,
+        "trash": 0.6296296119689941
+      }
+    },
+    {
+      "epoch": 20,
+      "train_loss": 0.05082029101525947,
+      "val_accuracy": 0.7554545454545455,
+      "val_macro_f1": 0.625664472579956,
+      "val_recall_by_class": {
+        "cardboard": 0.7407407164573669,
+        "celluloseacetate": 0.0,
+        "glass": 0.6973684430122375,
+        "metal": 0.7818182110786438,
+        "paper": 0.7290076613426208,
+        "plastic": 0.8389830589294434,
+        "polystyrene": 0.2857142984867096,
+        "rubber": 1.0,
+        "tetrapak": 0.47058823704719543,
+        "textile": 0.9166666865348816,
+        "trash": 0.6296296119689941
+      }
+    },
+    {
+      "epoch": 21,
+      "train_loss": 0.047772852788517735,
+      "val_accuracy": 0.7572727272727273,
+      "val_macro_f1": 0.6250796914100647,
+      "val_recall_by_class": {
+        "cardboard": 0.7407407164573669,
+        "celluloseacetate": 0.0,
+        "glass": 0.7105262875556946,
+        "metal": 0.7454545497894287,
+        "paper": 0.7290076613426208,
+        "plastic": 0.8502824902534485,
+        "polystyrene": 0.2857142984867096,
+        "rubber": 1.0,
+        "tetrapak": 0.47058823704719543,
+        "textile": 0.9166666865348816,
+        "trash": 0.7037037014961243
+      }
+    },
+    {
+      "epoch": 22,
+      "train_loss": 0.04353399374619546,
+      "val_accuracy": 0.7572727272727273,
+      "val_macro_f1": 0.6295262575149536,
+      "val_recall_by_class": {
+        "cardboard": 0.7530864477157593,
+        "celluloseacetate": 0.0,
+        "glass": 0.7171052694320679,
+        "metal": 0.7454545497894287,
+        "paper": 0.7061068415641785,
+        "plastic": 0.8615819215774536,
+        "polystyrene": 0.2857142984867096,
+        "rubber": 1.0,
+        "tetrapak": 0.529411792755127,
+        "textile": 0.9166666865348816,
+        "trash": 0.6296296119689941
+      }
+    },
+    {
+      "epoch": 23,
+      "train_loss": 0.045465975718997374,
+      "val_accuracy": 0.7609090909090909,
+      "val_macro_f1": 0.649833083152771,
+      "val_recall_by_class": {
+        "cardboard": 0.7407407164573669,
+        "celluloseacetate": 0.0,
+        "glass": 0.7105262875556946,
+        "metal": 0.739393949508667,
+        "paper": 0.7213740348815918,
+        "plastic": 0.8728813529014587,
+        "polystyrene": 0.2857142984867096,
+        "rubber": 1.0,
+        "tetrapak": 0.47058823704719543,
+        "textile": 0.9166666865348816,
+        "trash": 0.6666666865348816
+      }
+    },
+    {
+      "epoch": 24,
+      "train_loss": 0.047206203410102496,
+      "val_accuracy": 0.76,
+      "val_macro_f1": 0.6482208371162415,
+      "val_recall_by_class": {
+        "cardboard": 0.7407407164573669,
+        "celluloseacetate": 0.0,
+        "glass": 0.7171052694320679,
+        "metal": 0.7454545497894287,
+        "paper": 0.7213740348815918,
+        "plastic": 0.8672316670417786,
+        "polystyrene": 0.2857142984867096,
+        "rubber": 1.0,
+        "tetrapak": 0.47058823704719543,
+        "textile": 0.9166666865348816,
+        "trash": 0.6296296119689941
+      }
+    },
+    {
+      "epoch": 25,
+      "train_loss": 0.03918738333131106,
+      "val_accuracy": 0.76,
+      "val_macro_f1": 0.6471070051193237,
+      "val_recall_by_class": {
+        "cardboard": 0.7407407164573669,
+        "celluloseacetate": 0.0,
+        "glass": 0.7171052694320679,
+        "metal": 0.7454545497894287,
+        "paper": 0.7213740348815918,
+        "plastic": 0.8672316670417786,
+        "polystyrene": 0.2857142984867096,
+        "rubber": 1.0,
+        "tetrapak": 0.47058823704719543,
+        "textile": 0.9166666865348816,
+        "trash": 0.6296296119689941
+      }
+    }
+  ],
+  "init_checkpoint": null,
+  "pretraining": "torchvision_imagenet"
+}

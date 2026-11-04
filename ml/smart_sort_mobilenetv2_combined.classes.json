@@ -1,0 +1,17 @@
+{
+  "classes": [
+    "cardboard",
+    "celluloseacetate",
+    "glass",
+    "metal",
+    "paper",
+    "plastic",
+    "polystyrene",
+    "rubber",
+    "tetrapak",
+    "textile",
+    "trash"
+  ],
+  "dataset_manifest": "D:\\uiSmartSort\\ml\\raw_data\\source_manifest.json",
+  "init_checkpoint": null
+}
