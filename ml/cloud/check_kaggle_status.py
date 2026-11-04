@@ -12,7 +12,7 @@ def run(ref):
                           capture_output=True, text=True, check=True)
     print(proc.stdout)
     print(proc.stderr)
-    match = re.search(r"\bstatus\s*[:=]\s*([a-z_]+)", proc.stdout, re.I)
+    match = re.search(r"KernelWorkerStatus\.([A-Z_]+)", proc.stdout, re.I) or re.search(r"\bstatus\s*[:=]\s*([a-z_]+)", proc.stdout, re.I)
     if not match:
         raise SystemExit("Could not recognize Kaggle status; inspect CLI output, do not assume completion.")
     status = match.group(1).lower()
