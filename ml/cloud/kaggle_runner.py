@@ -68,15 +68,60 @@ def unpack_if_necessary(parent, mode):
     return found
 
 
+def resolve_dataset_mount(dataset_ref, input_root=INPUT_ROOT):
+    """Resolve Kaggle's flat or owner-qualified dataset mount paths.
+
+    Kaggle may choose /kaggle/input/<slug>, /kaggle/input/<owner>/<slug>,
+    or /kaggle/input/datasets/<owner>/<slug> depending on its input layout.
+    Never guess a different dataset just because its name looks similar.
+    """
+    parts = dataset_ref.strip("/").split("/")
+    if len(parts) != 2 or not all(parts):
+        raise RuntimeError(f"Invalid Kaggle dataset reference: {dataset_ref!r}")
+    owner, slug = parts
+    candidates = (
+        input_root / slug,
+        input_root / owner / slug,
+        input_root / "datasets" / owner / slug,
+        input_root / "datasets" / slug,
+    )
+    for candidate in candidates:
+        if candidate.is_dir():
+            print(f"Using Kaggle dataset mount: {candidate}", flush=True)
+            return candidate
+
+    # List only nearby directories; do not enumerate thousands of images.
+    visible = []
+    queue = [(input_root, 0)]
+    while queue and len(visible) < 50:
+        base, depth = queue.pop(0)
+        if not base.is_dir() or depth >= 3:
+            continue
+        try:
+            dirs = sorted(p for p in base.iterdir() if p.is_dir())
+        except OSError:
+            continue
+        for child in dirs:
+            visible.append(str(child))
+            queue.append((child, depth + 1))
+            if len(visible) >= 50:
+                break
+    raise RuntimeError(
+        f"Kaggle dataset {dataset_ref!r} is not mounted at any supported path. "
+        f"Checked: {[str(p) for p in candidates]}. "
+        f"Visible input directories: {visible or ['(none)']}. "
+        "Verify the dataset is READY and the notebook has the dataset "
+        "attached (kernel-metadata.json dataset_sources)."
+    )
+
+
 def main():
     config = KAGGLE_CONFIG  # provided by build_kernel.py
     src_dir = WORK_ROOT / "_smartsort_code"
     src_dir.mkdir(parents=True, exist_ok=True)
     for filename, source in EMBEDDED_SOURCES.items():
         (src_dir / filename).write_text(source, encoding="utf-8")
-    dataset_dir = INPUT_ROOT / config["dataset_slug"]
-    if not dataset_dir.is_dir():
-        raise RuntimeError(f"Kaggle dataset mount missing: {dataset_dir}. Check metadata.dataset_sources.")
+    dataset_dir = resolve_dataset_mount(config["dataset_ref"])
     # Fail rather than quietly burning the 12-hour GPU window on CPU.
     import torch
     if not torch.cuda.is_available():
