@@ -1,4 +1,4 @@
-r"""Rebuild Smart Sort's 100-image HTML report from saved results.csv without inference or Matplotlib.
+"""Rebuild Smart Sort's 100-image HTML report from saved results.csv without inference or Matplotlib.
 
 Run from ml/tests:
   python .\SmartSort_100_Image_Benchmark\generate_report_from_csv.py --results .\results_100 --images .\heldout_neoavara\images
