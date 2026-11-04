@@ -1,0 +1,63 @@
+{
+  "timestamp_utc": "2026-10-12T06:39:26.118204+00:00",
+  "tests_passed": 30,
+  "return_code": 0,
+  "categories": [
+    {
+      "name": "Checkpoint architecture",
+      "status": "PASS",
+      "evidence": "Loaded, correct 6-class output tensor"
+    },
+    {
+      "name": "Model consistency",
+      "status": "PASS",
+      "evidence": "Deterministic predictions and preprocessing match"
+    },
+    {
+      "name": "FastAPI functionality",
+      "status": "PASS",
+      "evidence": "Health, uploads, schema, invalid inputs, concurrency"
+    },
+    {
+      "name": "PC presence helpers",
+      "status": "PASS",
+      "evidence": "Difference mask and hysteresis parameters"
+    },
+    {
+      "name": "Evaluation and chart generator",
+      "status": "PASS",
+      "evidence": "Metric formula and image outputs checked with labeled fixtures"
+    },
+    {
+      "name": "External photographic accuracy",
+      "status": "PENDING",
+      "evidence": "Independent labeled photographs not accessible here"
+    },
+    {
+      "name": "Iowa City item-level routing",
+      "status": "PENDING",
+      "evidence": "Independent per-item accept/reject labels required"
+    },
+    {
+      "name": "End-to-end 5 second system",
+      "status": "PENDING",
+      "evidence": "Physical capture/display not tested"
+    },
+    {
+      "name": "Barcode and LCD",
+      "status": "NOT IN UPLOAD",
+      "evidence": "No implemented barcode or LCD path in provided files"
+    },
+    {
+      "name": "Timestamped event storage",
+      "status": "NOT IN UPLOAD",
+      "evidence": "Not implemented in uploaded app/client files"
+    },
+    {
+      "name": "Camera proximity gating",
+      "status": "NOT IN UPLOAD",
+      "evidence": "PC image differencing is not a 24-inch proximity sensor"
+    }
+  ],
+  "limitations": "PASS indicates PC functional behavior only. Pending checks cannot be inferred from synthetic images."
+}

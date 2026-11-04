@@ -2,3 +2,23 @@ ml/data
 ml/data_6class
 ml/raw_data
 ml/__pycache__
+
+# Python-generated files
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Temporary files and logs
+*.log
+ml/git_status.txt
+*.csv.
+
+# Locally downloaded benchmark images
+# Regenerate using prepare_neoavara.py
+ml/tests/heldout_neoavara/images/
+
+# Automatically generated benchmark manifests
+ml/tests/heldout_neoavara/*.csv
+
+# Generated benchmark preview dashboard
+ml/tests/SmartSort_100_Image_Benchmark/SmartSort_100_Image_Report.html

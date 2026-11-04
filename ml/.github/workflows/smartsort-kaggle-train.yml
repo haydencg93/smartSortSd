@@ -1,0 +1,82 @@
+name: Smart Sort - Start Kaggle GPU Training
+
+on:
+  workflow_dispatch:
+    inputs:
+      data_mode:
+        description: "Dataset type uploaded to Kaggle (start with prepared)"
+        required: true
+        type: choice
+        options: [prepared, raw]
+        default: prepared
+      epochs:
+        description: "Training epochs"
+        required: true
+        type: number
+        default: 25
+      batch_size:
+        description: "Batch size"
+        required: true
+        type: number
+        default: 32
+
+permissions:
+  contents: read
+
+concurrency:
+  group: smartsort-kaggle-launch
+  cancel-in-progress: false
+
+jobs:
+  launch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install Kaggle CLI
+        run: python -m pip install --upgrade 'kaggle>=1.7'
+      - name: Check required config
+        env:
+          OWNER: ${{ vars.KAGGLE_USERNAME }}
+          DATASET: ${{ vars.KAGGLE_DATASET_SLUG }}
+          TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+        shell: bash
+        run: |
+          test -n "$OWNER" || { echo 'Set variable KAGGLE_USERNAME'; exit 1; }
+          test -n "$DATASET" || { echo 'Set variable KAGGLE_DATASET_SLUG'; exit 1; }
+          test -n "$TOKEN" || { echo 'Set secret KAGGLE_API_TOKEN'; exit 1; }
+      - name: Package existing Smart Sort scripts into Kaggle kernel
+        env:
+          OWNER: ${{ vars.KAGGLE_USERNAME }}
+          DATASET: ${{ vars.KAGGLE_DATASET_SLUG }}
+          KERNEL: ${{ vars.KAGGLE_KERNEL_SLUG }}
+          MODE: ${{ inputs.data_mode }}
+          EPOCHS: ${{ inputs.epochs }}
+          BATCH: ${{ inputs.batch_size }}
+        shell: bash
+        run: |
+          python ml/cloud/build_kernel.py \
+            --repo-root . \
+            --output "$RUNNER_TEMP/smartsort_kaggle" \
+            --owner "$OWNER" \
+            --dataset-slug "$DATASET" \
+            --kernel-slug "${KERNEL:-smartsort-gpu-trainer}" \
+            --mode "$MODE" \
+            --epochs "$EPOCHS" \
+            --batch-size "$BATCH" \
+            --source-commit "$GITHUB_SHA"
+      - name: Upload code and START independent Kaggle GPU run
+        env:
+          KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+        shell: bash
+        run: |
+          kaggle kernels push -p "$RUNNER_TEMP/smartsort_kaggle" --accelerator NvidiaTeslaT4
+      - name: What happens next
+        run: |
+          echo 'Kaggle executes remotely. You may shut down your laptop.'
+          echo 'After completion, the scheduled Smart Sort Publish workflow will retrieve and validate results.'

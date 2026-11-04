@@ -1,0 +1,14 @@
+{
+  "checkpoint": "smart_sort_mobilenetv2_6class.pth",
+  "endpoint": "localhost actual HTTP server",
+  "n_valid_requests": 35,
+  "expected_error_response_400": 400,
+  "http_round_trip_ms": {
+    "p50": 46.65,
+    "p95": 52.0,
+    "p99": 84.5
+  },
+  "server_reported_latency_p95_ms": 43.65,
+  "all_under_5s": true,
+  "limitations": "Local loopback: still excludes presence detection, settling, camera, Wi-Fi/ESP32 link and LCD; synthetic images, no ground-truth accuracy."
+}
