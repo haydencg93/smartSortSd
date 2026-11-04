@@ -1,0 +1,113 @@
+name: Smart Sort - Retrieve and Validate Kaggle Model
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Scheduled GitHub workflows may start late; this simply checks status.
+    - cron: '17 */3 * * *'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: smartsort-model-publisher
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout default branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 0
+      - name: Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install Kaggle CLI
+        run: python -m pip install --upgrade 'kaggle>=1.7'
+      - name: Check Kaggle completion status
+        id: status
+        env:
+          KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+          KAGGLE_OWNER: ${{ vars.KAGGLE_USERNAME }}
+          KERNEL_SLUG: ${{ vars.KAGGLE_KERNEL_SLUG }}
+        shell: bash
+        run: |
+          test -n "$KAGGLE_API_TOKEN" && test -n "$KAGGLE_OWNER" || { echo 'Missing Kaggle credentials/owner'; exit 1; }
+          python ml/cloud/check_kaggle_status.py --kernel "$KAGGLE_OWNER/${KERNEL_SLUG:-smartsort-gpu-trainer}"
+      - name: Download completed checkpoint files
+        if: steps.status.outputs.ready == 'true'
+        env:
+          KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+          KAGGLE_OWNER: ${{ vars.KAGGLE_USERNAME }}
+          KERNEL_SLUG: ${{ vars.KAGGLE_KERNEL_SLUG }}
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/model"
+          kaggle kernels output "$KAGGLE_OWNER/${KERNEL_SLUG:-smartsort-gpu-trainer}" \
+            -p "$RUNNER_TEMP/model" --force \
+            --file-pattern '.*(smart_sort_mobilenetv2_combined\.(pth|classes\.json|metrics\.json)|cloud_run\.json)$'
+          ls -lah "$RUNNER_TEMP/model"
+      - name: Install CPU PyTorch for structural checkpoint verification
+        if: steps.status.outputs.ready == 'true'
+        run: python -m pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+      - name: Validate classifier weights, class mapping and held-out training validation metrics
+        if: steps.status.outputs.ready == 'true'
+        id: verify
+        env:
+          MIN_ACCURACY: ${{ vars.MIN_MODEL_VAL_ACCURACY }}
+          MIN_F1: ${{ vars.MIN_MODEL_VAL_MACRO_F1 }}
+          MIN_GLASS: ${{ vars.MIN_MODEL_GLASS_RECALL }}
+          MIN_TRASH: ${{ vars.MIN_MODEL_TRASH_RECALL }}
+        shell: bash
+        run: |
+          python ml/cloud/validate_model.py \
+            --directory "$RUNNER_TEMP/model" \
+            --previous ml/smart_sort_mobilenetv2_combined.pth \
+            --min-accuracy "${MIN_ACCURACY:-0.85}" \
+            --min-macro-f1 "${MIN_F1:-0.75}" \
+            --min-glass-recall "${MIN_GLASS:-0.80}" \
+            --min-trash-recall "${MIN_TRASH:-0.80}"
+      - name: Publish release + commit updated files ONLY when explicitly enabled
+        if: steps.status.outputs.ready == 'true' && steps.verify.outputs.changed == 'true' && vars.ENABLE_MODEL_AUTO_COMMIT == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MODEL_TAG: ${{ steps.verify.outputs.tag }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          SOURCE_COMMIT: ${{ steps.verify.outputs.source_commit }}
+        shell: bash
+        run: |
+          # Do not silently overwrite the previous release or use raw datasets.
+          cp "$RUNNER_TEMP/model/smart_sort_mobilenetv2_combined.pth" ml/
+          cp "$RUNNER_TEMP/model/smart_sort_mobilenetv2_combined.classes.json" ml/
+          cp "$RUNNER_TEMP/model/smart_sort_mobilenetv2_combined.metrics.json" ml/
+          git config user.name "smart-sort-model-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -f ml/smart_sort_mobilenetv2_combined.pth ml/smart_sort_mobilenetv2_combined.classes.json ml/smart_sort_mobilenetv2_combined.metrics.json
+          if ! git diff --cached --quiet; then
+            git commit -m "Update Smart Sort validated model ${MODEL_TAG}"
+            git pull --rebase origin "$DEFAULT_BRANCH"
+            git push origin "HEAD:$DEFAULT_BRANCH"
+          fi
+          if ! gh release view "$MODEL_TAG" >/dev/null 2>&1; then
+            gh release create "$MODEL_TAG" \
+              "$RUNNER_TEMP/model/smart_sort_mobilenetv2_combined.pth" \
+              "$RUNNER_TEMP/model/smart_sort_mobilenetv2_combined.classes.json" \
+              "$RUNNER_TEMP/model/smart_sort_mobilenetv2_combined.metrics.json" \
+              "$RUNNER_TEMP/model/cloud_run.json" \
+              --title "Smart Sort model $MODEL_TAG" \
+              --notes "Validated Kaggle-produced model from source commit $SOURCE_COMMIT. Validation gates passed. Independent camera benchmark still required before physical deployment." \
+              --prerelease
+          fi
+      - name: Status / safe default
+        if: steps.status.outputs.ready == 'true' && steps.verify.outputs.changed == 'true' && vars.ENABLE_MODEL_AUTO_COMMIT != 'true'
+        run: |
+          echo 'New Kaggle checkpoint passed validation but auto-commit is DISABLED.'
+          echo 'Set repository variable ENABLE_MODEL_AUTO_COMMIT=true after independent review.'
+      - name: No completed run yet
+        if: steps.status.outputs.ready != 'true'
+        run: echo 'No completed Kaggle run to publish on this check.'
