@@ -1,0 +1,32 @@
+{
+  "counts": {
+    "Passed (Fully)": 72,
+    "Failed": 24,
+    "Passed (w/ Concern)": 4
+  },
+  "average_ms": 34.17691900001955,
+  "accuracy_both": 0.76,
+  "material_accuracy": 0.76,
+  "checkpoint_classes": [
+    "cardboard",
+    "celluloseacetate",
+    "glass",
+    "metal",
+    "paper",
+    "plastic",
+    "polystyrene",
+    "rubber",
+    "tetrapak",
+    "textile",
+    "trash"
+  ],
+  "checkpoint_class_count": 11,
+  "bin_comparison_note": "Legacy trash and landfill names are normalized for comparison. Auto-filled item-bin labels use historical provisional Iowa City assumptions, not independently verified UIowa rules.",
+  "total": 100,
+  "automatically_labeled": 100,
+  "label_certification": "provisional material policy; not verified University of Iowa item-level ground truth",
+  "threshold_ms": 2500,
+  "confidence_threshold": 0.75,
+  "device": "cpu",
+  "created": "2026-11-04T04:07:45.082984+00:00"
+}
