@@ -28,7 +28,10 @@ jobs:
         with:
           python-version: '3.11'
       - name: Install Kaggle CLI
-        run: python -m pip install --upgrade 'kaggle>=1.7'
+        run: |
+          python -m pip install --upgrade "kaggle==2.2.5" six
+          python -c "import kaggle, six; print('Kaggle imports successful')"
+          kaggle --version
       - name: Check Kaggle completion status
         id: status
         env:
