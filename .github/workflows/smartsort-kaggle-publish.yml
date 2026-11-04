@@ -2,8 +2,14 @@ name: Smart Sort - Retrieve and Validate Kaggle Model
 
 on:
   workflow_dispatch:
+    inputs:
+      force_recheck:
+        description: 'Re-download and re-validate the current Kaggle model, even if previously reviewed'
+        type: boolean
+        required: false
+        default: false
   schedule:
-    # Scheduled GitHub workflows may start late; this simply checks status.
+    # Scheduled GitHub workflows may start late; status checks are safe to repeat.
     - cron: '17 */3 * * *'
 
 permissions:
@@ -23,15 +29,18 @@ jobs:
         with:
           ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 0
+
       - name: Python 3.11
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+
       - name: Install Kaggle CLI
         run: |
           python -m pip install --upgrade "kaggle==2.2.5" six
           python -c "import kaggle, six; print('Kaggle imports successful')"
           kaggle --version
+
       - name: Check Kaggle completion status
         id: status
         env:
@@ -42,7 +51,8 @@ jobs:
         run: |
           test -n "$KAGGLE_API_TOKEN" && test -n "$KAGGLE_OWNER" || { echo 'Missing Kaggle credentials/owner'; exit 1; }
           python ml/cloud/check_kaggle_status.py --kernel "$KAGGLE_OWNER/${KERNEL_SLUG:-smartsort-gpu-trainer}"
-      - name: Download completed checkpoint files
+
+      - name: Download small run provenance for change detection
         if: steps.status.outputs.ready == 'true'
         env:
           KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
@@ -53,10 +63,63 @@ jobs:
           mkdir -p "$RUNNER_TEMP/model"
           kaggle kernels output "$KAGGLE_OWNER/${KERNEL_SLUG:-smartsort-gpu-trainer}" \
             -p "$RUNNER_TEMP/model" --force \
+            --file-pattern '.*cloud_run\.json$'
+          test -s "$RUNNER_TEMP/model/cloud_run.json" || { echo 'Missing cloud_run.json'; exit 1; }
+
+      - name: Identify completed model and review policy
+        id: probe
+        if: steps.status.outputs.ready == 'true'
+        env:
+          KAGGLE_OWNER: ${{ vars.KAGGLE_USERNAME }}
+          KERNEL_SLUG: ${{ vars.KAGGLE_KERNEL_SLUG }}
+          MIN_ACCURACY: ${{ vars.MIN_MODEL_VAL_ACCURACY }}
+          MIN_F1: ${{ vars.MIN_MODEL_VAL_MACRO_F1 }}
+          MIN_GLASS: ${{ vars.MIN_MODEL_GLASS_RECALL }}
+          MIN_TRASH: ${{ vars.MIN_MODEL_TRASH_RECALL }}
+          AUTO_COMMIT: ${{ vars.ENABLE_MODEL_AUTO_COMMIT }}
+        shell: bash
+        run: |
+          python ml/cloud/probe_kaggle_model.py \
+            --provenance "$RUNNER_TEMP/model/cloud_run.json" \
+            --kernel "$KAGGLE_OWNER/${KERNEL_SLUG:-smartsort-gpu-trainer}" \
+            --previous ml/smart_sort_mobilenetv2_combined.pth \
+            --min-accuracy "${MIN_ACCURACY:-0.85}" \
+            --min-macro-f1 "${MIN_F1:-0.75}" \
+            --min-glass-recall "${MIN_GLASS:-0.80}" \
+            --min-trash-recall "${MIN_TRASH:-0.80}" \
+            --auto-commit "${AUTO_COMMIT:-false}"
+
+      - name: Restore previous review marker
+        id: review
+        if: steps.status.outputs.ready == 'true' && inputs.force_recheck != true
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ runner.temp }}/smart-sort-review/marker.txt
+          key: ${{ steps.probe.outputs.cache_key }}
+
+      - name: No new model to review (normal outcome)
+        if: steps.status.outputs.ready == 'true' && steps.review.outputs.cache-hit == 'true'
+        run: |
+          echo 'This exact Kaggle model has already been reviewed under the current quality policy.'
+          echo 'No re-download, no artifact duplication, no publication, no failure.'
+          echo '## Smart Sort: no new model to review' >> "$GITHUB_STEP_SUMMARY"
+          echo 'The latest Kaggle candidate was already evaluated under the current quality thresholds. No action needed.' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Download completed checkpoint files
+        if: steps.status.outputs.ready == 'true' && steps.review.outputs.cache-hit != 'true'
+        env:
+          KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+          KAGGLE_OWNER: ${{ vars.KAGGLE_USERNAME }}
+          KERNEL_SLUG: ${{ vars.KAGGLE_KERNEL_SLUG }}
+        shell: bash
+        run: |
+          kaggle kernels output "$KAGGLE_OWNER/${KERNEL_SLUG:-smartsort-gpu-trainer}" \
+            -p "$RUNNER_TEMP/model" --force \
             --file-pattern '.*(smart_sort_mobilenetv2_combined\.(pth|classes\.json|metrics\.json)|cloud_run\.json)$'
           ls -lah "$RUNNER_TEMP/model"
+
       - name: Archive Kaggle model candidate
-        if: steps.status.outputs.ready == 'true'
+        if: steps.status.outputs.ready == 'true' && steps.review.outputs.cache-hit != 'true'
         uses: actions/upload-artifact@v4
         with:
           name: smartsort-kaggle-model-candidate
@@ -67,11 +130,13 @@ jobs:
             ${{ runner.temp }}/model/cloud_run.json
           if-no-files-found: error
           retention-days: 30
+
       - name: Install CPU PyTorch for structural checkpoint verification
-        if: steps.status.outputs.ready == 'true'
+        if: steps.status.outputs.ready == 'true' && steps.review.outputs.cache-hit != 'true'
         run: python -m pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
-      - name: Validate classifier weights, class mapping and held-out training validation metrics
-        if: steps.status.outputs.ready == 'true'
+
+      - name: Validate checkpoint and evaluate quality gates
+        if: steps.status.outputs.ready == 'true' && steps.review.outputs.cache-hit != 'true'
         id: verify
         env:
           MIN_ACCURACY: ${{ vars.MIN_MODEL_VAL_ACCURACY }}
@@ -87,8 +152,15 @@ jobs:
             --min-macro-f1 "${MIN_F1:-0.75}" \
             --min-glass-recall "${MIN_GLASS:-0.80}" \
             --min-trash-recall "${MIN_TRASH:-0.80}"
-      - name: Publish release + commit updated files ONLY when explicitly enabled
-        if: steps.status.outputs.ready == 'true' && steps.verify.outputs.changed == 'true' && vars.ENABLE_MODEL_AUTO_COMMIT == 'true'
+
+      - name: Quality gates rejected candidate (normal outcome)
+        if: steps.verify.outputs.approved == 'false'
+        run: |
+          echo 'Candidate is structurally valid but below quality thresholds. No model is published.'
+          echo 'Workflow succeeds; see the review table in the run summary.'
+
+      - name: Publish release + commit ONLY when explicitly enabled and approved
+        if: steps.verify.outputs.approved == 'true' && steps.verify.outputs.changed == 'true' && vars.ENABLE_MODEL_AUTO_COMMIT == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           MODEL_TAG: ${{ steps.verify.outputs.tag }}
@@ -118,11 +190,33 @@ jobs:
               --notes "Validated Kaggle-produced model from source commit $SOURCE_COMMIT. Validation gates passed. Independent camera benchmark still required before physical deployment." \
               --prerelease
           fi
-      - name: Status / safe default
-        if: steps.status.outputs.ready == 'true' && steps.verify.outputs.changed == 'true' && vars.ENABLE_MODEL_AUTO_COMMIT != 'true'
+
+      - name: Approval succeeded but auto-publishing is disabled
+        if: steps.verify.outputs.approved == 'true' && steps.verify.outputs.changed == 'true' && vars.ENABLE_MODEL_AUTO_COMMIT != 'true'
         run: |
-          echo 'New Kaggle checkpoint passed validation but auto-commit is DISABLED.'
-          echo 'Set repository variable ENABLE_MODEL_AUTO_COMMIT=true after independent review.'
-      - name: No completed run yet
+          echo 'Checkpoint passed quality gates; ENABLE_MODEL_AUTO_COMMIT=false so no files were published.'
+          echo 'Candidate remains in this workflow run artifact for manual review.'
+
+      - name: Save marker for successfully reviewed candidate
+        if: success() && steps.verify.outcome == 'success' && steps.review.outputs.cache-hit != 'true' && inputs.force_recheck != true
+        shell: bash
+        env:
+          CANDIDATE_SHA: ${{ steps.probe.outputs.model_sha }}
+          APPROVED: ${{ steps.verify.outputs.approved }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/smart-sort-review"
+          printf 'model=%s\napproved=%s\n' "$CANDIDATE_SHA" "$APPROVED" > "$RUNNER_TEMP/smart-sort-review/marker.txt"
+
+      - name: Cache successfully reviewed candidate
+        if: success() && steps.verify.outcome == 'success' && steps.review.outputs.cache-hit != 'true' && inputs.force_recheck != true
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ runner.temp }}/smart-sort-review/marker.txt
+          key: ${{ steps.probe.outputs.cache_key }}
+
+      - name: No completed Kaggle run yet (normal outcome)
         if: steps.status.outputs.ready != 'true'
-        run: echo 'No completed Kaggle run to publish on this check.'
+        run: |
+          echo 'No completed Kaggle run to retrieve on this check.'
+          echo '## Smart Sort: no completed Kaggle model yet' >> "$GITHUB_STEP_SUMMARY"
+          echo 'A pending, running, or failed Kaggle training job has no new model candidate to retrieve.' >> "$GITHUB_STEP_SUMMARY"
