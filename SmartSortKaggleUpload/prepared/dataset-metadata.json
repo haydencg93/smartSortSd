@@ -1,0 +1,10 @@
+{
+    "title":  "Smart Sort Private Training Images",
+    "id":  "haydengamble/smartsort-prepared",
+    "licenses":  [
+                     {
+                         "name":  "other"
+                     }
+                 ],
+    "description":  "PRIVATE Smart Sort ML dataset. Mixed source licenses: MIT-licensed TrashNet and CC0 Humans in the Loop. For team research only; respect per-source license/provenance records. Never claim this combined bundle is CC0. Bundle mode: prepared."
+}
