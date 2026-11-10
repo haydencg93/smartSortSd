@@ -70,8 +70,8 @@ jobs:
             --dataset-slug "$DATASET" \
             --kernel-slug "${KERNEL:-smartsort-gpu-trainer}" \
             --mode "$MODE" \
-            --epochs "$EPOCHS" \
-            --batch-size "$BATCH" \
+            --epochs "${EPOCHS%.*}" \
+            --batch-size "${BATCH%.*}" \
             --source-commit "$GITHUB_SHA"
       - name: Upload code and START independent Kaggle GPU run
         env:
