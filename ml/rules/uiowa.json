@@ -1,0 +1,226 @@
+{
+  "schema_version": 1,
+  "default_location": "uiowa",
+  "locations": {
+    "uiowa": {
+      "name": "University of Iowa public campus bins",
+      "description": "Public student recycling and landfill stations; NOT Iowa City curbside collection or department/laboratory waste procedures.",
+      "policy_sources": [
+        "https://sustainability.uiowa.edu/sites/sustainability.uiowa.edu/files/2025-02/recycle-poster-8.5x11-original-pics.pdf",
+        "https://sustainability.uiowa.edu/what-bin",
+        "https://ehs.research.uiowa.edu/list-hazardous-materials-and-disposal-contacts",
+        "https://ehs.research.uiowa.edu/wasteenvironmental/universal-waste-aerosol-cans-batteries-lamps-and-mercury-containing-instruments"
+      ],
+      "guidance": "Empty, clean and dry containers/paper before recycling. A photo alone cannot confirm food contamination, resin code or battery chemistry.",
+      "rules": {
+        "paper": {
+          "disposal": "recycling",
+          "display_name": "Paper",
+          "instructions": "Recycle only clean, dry paper without food or grease residue.",
+          "source_url": "https://sustainability.uiowa.edu/sites/sustainability.uiowa.edu/files/2025-02/recycle-poster-8.5x11-original-pics.pdf",
+          "requires_clean_dry_empty": true
+        },
+        "cardboard": {
+          "disposal": "recycling",
+          "display_name": "Cardboard",
+          "instructions": "Flatten cardboard; recycle only when clean and dry.",
+          "source_url": "https://sustainability.uiowa.edu/sites/sustainability.uiowa.edu/files/2025-02/recycle-poster-8.5x11-original-pics.pdf",
+          "requires_clean_dry_empty": true
+        },
+        "carton": {
+          "disposal": "recycling",
+          "display_name": "Carton",
+          "instructions": "Empty, clean and dry beverage/food cartons are accepted.",
+          "source_url": "https://sustainability.uiowa.edu/sites/sustainability.uiowa.edu/files/2025-02/recycle-poster-8.5x11-original-pics.pdf",
+          "requires_clean_dry_empty": true
+        },
+        "plastic_container": {
+          "disposal": "recycling",
+          "display_name": "Plastic container",
+          "instructions": "Recycle clean, dry, empty plastic containers; do not interpret this as acceptance of all plastic objects.",
+          "source_url": "https://sustainability.uiowa.edu/sites/sustainability.uiowa.edu/files/2025-02/recycle-poster-8.5x11-original-pics.pdf",
+          "requires_clean_dry_empty": true
+        },
+        "metal_can": {
+          "disposal": "recycling",
+          "display_name": "Metal container",
+          "instructions": "Recycle clean, dry, empty metal food and beverage containers.",
+          "source_url": "https://sustainability.uiowa.edu/sites/sustainability.uiowa.edu/files/2025-02/recycle-poster-8.5x11-original-pics.pdf",
+          "requires_clean_dry_empty": true
+        },
+        "glass": {
+          "disposal": "landfill",
+          "display_name": "Glass",
+          "instructions": "Glass is excluded from ordinary campus recycling. Handle broken glass safely; laboratory glass requires separate guidance.",
+          "source_url": "https://sustainability.uiowa.edu/sites/sustainability.uiowa.edu/files/2025-02/recycle-poster-8.5x11-original-pics.pdf"
+        },
+        "plastic_bag": {
+          "disposal": "landfill",
+          "display_name": "Plastic shopping bag",
+          "instructions": "Plastic bags are excluded from campus recycling bins. Reuse or use a separate film collection where available.",
+          "source_url": "https://sustainability.uiowa.edu/sites/sustainability.uiowa.edu/files/2025-02/recycle-poster-8.5x11-original-pics.pdf"
+        },
+        "plastic_film": {
+          "disposal": "landfill",
+          "display_name": "Plastic wrap or air pillow",
+          "instructions": "Keep soft plastic film and packaging out of campus recycling bins.",
+          "source_url": "https://sustainability.uiowa.edu/sites/sustainability.uiowa.edu/files/2025-02/recycle-poster-8.5x11-original-pics.pdf"
+        },
+        "plastic_utensil": {
+          "disposal": "landfill",
+          "display_name": "Disposable plastic utensil",
+          "instructions": "Do not place plastic utensils in container-only recycling.",
+          "source_url": "https://sustainability.uiowa.edu/what-bin"
+        },
+        "foam": {
+          "disposal": "landfill",
+          "display_name": "Styrofoam",
+          "instructions": "Styrofoam is not accepted in campus recycling bins.",
+          "source_url": "https://sustainability.uiowa.edu/sites/sustainability.uiowa.edu/files/2025-02/recycle-poster-8.5x11-original-pics.pdf"
+        },
+        "trash": {
+          "disposal": "landfill",
+          "display_name": "Nonrecyclable everyday trash",
+          "instructions": "Use regular landfill bins for nonhazardous everyday waste; food-contaminated items are not recycling.",
+          "source_url": "https://sustainability.uiowa.edu/what-bin"
+        },
+        "glass_bottle": {
+          "disposal": "landfill",
+          "display_name": "Glass bottle",
+          "instructions": "Glass is excluded from campus recycling bins.",
+          "source_url": "https://sustainability.uiowa.edu/sites/sustainability.uiowa.edu/files/2025-02/recycle-poster-8.5x11-original-pics.pdf"
+        },
+        "paper_towel": {
+          "disposal": "landfill",
+          "display_name": "Used paper towel or tissue",
+          "instructions": "Not accepted in ordinary recycling; check whether a separate compost program is available.",
+          "source_url": "https://sustainability.uiowa.edu/what-bin"
+        },
+        "napkin": {
+          "disposal": "landfill",
+          "display_name": "Napkin",
+          "instructions": "Not accepted in ordinary recycling; check whether a separate compost program is available.",
+          "source_url": "https://sustainability.uiowa.edu/what-bin"
+        },
+        "plastic_packet": {
+          "disposal": "landfill",
+          "display_name": "Plastic wrapper",
+          "instructions": "Plastic wrappers and packets do not qualify as rigid plastic containers.",
+          "source_url": "https://sustainability.uiowa.edu/sites/sustainability.uiowa.edu/files/2025-02/recycle-poster-8.5x11-original-pics.pdf"
+        },
+        "foil": {
+          "disposal": "manual_review",
+          "display_name": "Aluminum foil or tray",
+          "instructions": "Campus recycling poster specifies metal containers, but does not establish blanket acceptance of foil. Ask facilities for item-specific guidance.",
+          "source_url": "https://sustainability.uiowa.edu/sites/sustainability.uiowa.edu/files/2025-02/recycle-poster-8.5x11-original-pics.pdf"
+        },
+        "plastic_other": {
+          "disposal": "manual_review",
+          "display_name": "Non-container plastic",
+          "instructions": "Resin-code and material appearance alone do not confirm acceptance. Refer to campus item-specific guidance.",
+          "source_url": "https://sustainability.uiowa.edu/what-bin"
+        },
+        "glove": {
+          "disposal": "manual_review",
+          "display_name": "Disposable glove",
+          "instructions": "Ordinary and contaminated/hazardous gloves have different handling requirements; confirm use before disposal.",
+          "source_url": "https://sustainability.uiowa.edu/what-bin"
+        },
+        "book_hardcover": {
+          "disposal": "manual_review",
+          "display_name": "Hardcover book",
+          "instructions": "Check reuse, donation, or campus collection options before disposal.",
+          "source_url": "https://sustainability.uiowa.edu/what-bin"
+        },
+        "battery": {
+          "disposal": "special_disposal",
+          "display_name": "Battery",
+          "instructions": "Check battery chemistry: lithium-ion, rechargeable and button batteries require EHS or approved collection; university guidance lists ordinary alkaline batteries as trash. Never assume chemistry from an image.",
+          "source_url": "https://ehs.research.uiowa.edu/list-hazardous-materials-and-disposal-contacts",
+          "requires_item_check": true
+        },
+        "electronics": {
+          "disposal": "special_disposal",
+          "display_name": "Electronics",
+          "instructions": "University-owned electronics/e-waste are handled by UI Surplus; personal devices may have separate drop-off options.",
+          "source_url": "https://ehs.research.uiowa.edu/list-hazardous-materials-and-disposal-contacts"
+        },
+        "light_bulb": {
+          "disposal": "manual_review",
+          "display_name": "Light bulb",
+          "instructions": "Bulb type matters: fluorescent/mercury lamps use a collection process, while ordinary incandescent lamps may go in trash. Contact General Stores or EHS as appropriate.",
+          "source_url": "https://ehs.research.uiowa.edu/wasteenvironmental/universal-waste-aerosol-cans-batteries-lamps-and-mercury-containing-instruments",
+          "requires_item_check": true
+        },
+        "aerosol_can": {
+          "disposal": "special_disposal",
+          "display_name": "Aerosol can",
+          "instructions": "Do not place pressurized spray cans in ordinary campus bins; contact EHS for the appropriate disposal process.",
+          "source_url": "https://ehs.research.uiowa.edu/list-hazardous-materials-and-disposal-contacts"
+        },
+        "sharps": {
+          "disposal": "special_disposal",
+          "display_name": "Sharp object or needle",
+          "instructions": "Do not place exposed sharps into standard recycling; seek an approved sharps-collection process.",
+          "source_url": "https://ehs.research.uiowa.edu/list-hazardous-materials-and-disposal-contacts"
+        },
+        "medication": {
+          "disposal": "manual_review",
+          "display_name": "Medication",
+          "instructions": "Do not decide disposal of medicines solely from a photo; use an appropriate drug take-back or authorized guidance.",
+          "source_url": "https://ehs.research.uiowa.edu/list-hazardous-materials-and-disposal-contacts"
+        },
+        "plastic": {
+          "disposal": "manual_review",
+          "display_name": "Unspecified plastic",
+          "instructions": "Cannot determine whether plastic is an accepted empty container, bag, film or utensil from the generic material label.",
+          "source_url": "https://sustainability.uiowa.edu/sites/sustainability.uiowa.edu/files/2025-02/recycle-poster-8.5x11-original-pics.pdf",
+          "legacy_only": true
+        },
+        "metal": {
+          "disposal": "manual_review",
+          "display_name": "Unspecified metal",
+          "instructions": "Campus recycling is for metal containers; a generic metal label does not prove this object is a container.",
+          "source_url": "https://sustainability.uiowa.edu/sites/sustainability.uiowa.edu/files/2025-02/recycle-poster-8.5x11-original-pics.pdf",
+          "legacy_only": true
+        },
+        "rubber": {
+          "disposal": "manual_review",
+          "display_name": "Rubber",
+          "instructions": "Rubber objects differ in disposal requirements; tires and specialty rubber require separate guidance.",
+          "source_url": "https://sustainability.uiowa.edu/what-bin",
+          "legacy_only": true
+        },
+        "polystyrene": {
+          "disposal": "landfill",
+          "display_name": "Polystyrene foam",
+          "instructions": "Not accepted in campus recycling bins.",
+          "source_url": "https://sustainability.uiowa.edu/sites/sustainability.uiowa.edu/files/2025-02/recycle-poster-8.5x11-original-pics.pdf",
+          "legacy_only": true
+        },
+        "textile": {
+          "disposal": "landfill",
+          "display_name": "Textile",
+          "instructions": "Reuse or donate usable textiles; ordinary textiles are not accepted in standard recycling.",
+          "source_url": "https://sustainability.uiowa.edu/what-bin",
+          "legacy_only": true
+        },
+        "tetrapak": {
+          "disposal": "recycling",
+          "display_name": "Carton (legacy Tetra Pak label)",
+          "instructions": "Empty, clean and dry cartons are accepted.",
+          "source_url": "https://sustainability.uiowa.edu/sites/sustainability.uiowa.edu/files/2025-02/recycle-poster-8.5x11-original-pics.pdf",
+          "requires_clean_dry_empty": true,
+          "legacy_only": true
+        },
+        "celluloseacetate": {
+          "disposal": "manual_review",
+          "display_name": "Cellulose acetate (legacy)",
+          "instructions": "Retired model category; object-specific disposal must be confirmed.",
+          "source_url": "https://sustainability.uiowa.edu/what-bin",
+          "legacy_only": true
+        }
+      }
+    }
+  }
+}

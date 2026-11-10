@@ -76,6 +76,8 @@ jobs:
           MIN_F1: ${{ vars.MIN_MODEL_VAL_MACRO_F1 }}
           MIN_GLASS: ${{ vars.MIN_MODEL_GLASS_RECALL }}
           MIN_TRASH: ${{ vars.MIN_MODEL_TRASH_RECALL }}
+          MIN_CLASS_RECALL: ${{ vars.MIN_MODEL_MIN_CLASS_RECALL }}
+          MAX_LOW_CONFIDENCE: ${{ vars.MAX_MODEL_LOW_CONFIDENCE_RATE }}
           AUTO_COMMIT: ${{ vars.ENABLE_MODEL_AUTO_COMMIT }}
         shell: bash
         run: |
@@ -87,6 +89,8 @@ jobs:
             --min-macro-f1 "${MIN_F1:-0.75}" \
             --min-glass-recall "${MIN_GLASS:-0.80}" \
             --min-trash-recall "${MIN_TRASH:-0.80}" \
+            --min-class-recall "${MIN_CLASS_RECALL:-0.50}" \
+            --max-low-confidence-rate "${MAX_LOW_CONFIDENCE:-0.05}" \
             --auto-commit "${AUTO_COMMIT:-false}"
 
       - name: Restore previous review marker
@@ -143,6 +147,8 @@ jobs:
           MIN_F1: ${{ vars.MIN_MODEL_VAL_MACRO_F1 }}
           MIN_GLASS: ${{ vars.MIN_MODEL_GLASS_RECALL }}
           MIN_TRASH: ${{ vars.MIN_MODEL_TRASH_RECALL }}
+          MIN_CLASS_RECALL: ${{ vars.MIN_MODEL_MIN_CLASS_RECALL }}
+          MAX_LOW_CONFIDENCE: ${{ vars.MAX_MODEL_LOW_CONFIDENCE_RATE }}
         shell: bash
         run: |
           python ml/cloud/validate_model.py \
@@ -151,7 +157,9 @@ jobs:
             --min-accuracy "${MIN_ACCURACY:-0.85}" \
             --min-macro-f1 "${MIN_F1:-0.75}" \
             --min-glass-recall "${MIN_GLASS:-0.80}" \
-            --min-trash-recall "${MIN_TRASH:-0.80}"
+            --min-trash-recall "${MIN_TRASH:-0.80}" \
+            --min-class-recall "${MIN_CLASS_RECALL:-0.50}" \
+            --max-low-confidence-rate "${MAX_LOW_CONFIDENCE:-0.05}"
 
       - name: Quality gates rejected candidate (normal outcome)
         if: steps.verify.outputs.approved == 'false'

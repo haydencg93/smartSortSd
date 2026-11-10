@@ -55,16 +55,26 @@ def pack(args):
     if n_files == 0:
         archive.unlink(missing_ok=True)
         raise SystemExit("Nothing to package")
+    # The prepared dataset can now contain imported CC BY sources as well as
+    # MIT and CC0. Describe what its OWN source manifest declares; never label
+    # the combined archive as freely redistributable or CC0-only.
+    provenance = raw / ('source_manifest.json' if args.mode == 'prepared' else 'sources.json')
+    source_info = json.loads(provenance.read_text(encoding='utf-8')) if provenance.is_file() else {}
+    declared = sorted({str(item.get('license', 'UNVERIFIED'))
+                       for item in source_info.get('sources', []) if isinstance(item, dict)})
+    license_summary = ', '.join(declared) if declared else 'not available'
     meta = {
         "title": args.title,
         "id": f"{args.owner}/{args.slug}",
-        # IMPORTANT: Existing Smart Sort images include MIT TrashNet and CC0 HITL.
-        # Do not advertise the entire combined dataset as CC0.
         "licenses": [{"name": "other"}],
-        "description": ("PRIVATE Smart Sort ML dataset. Mixed source licenses: MIT-licensed TrashNet and "
-                        "CC0 Humans in the Loop. For team research only; respect per-source "
-                        "license/provenance records. Never claim this combined bundle is CC0. "
-                        f"Bundle mode: {args.mode}."),
+        "description": (
+            f"PRIVATE Smart Sort ML dataset ({args.mode}). "
+            f"Declared source licenses: {license_summary}. "
+            "Contains mixed-license images; confirm each source's permitted use and "
+            "attribution obligations before sharing. Per-source provenance and license "
+            "declarations are in the source manifest included with this bundle. "
+            "The combined archive is NOT CC0-only."
+        )[:1000],
     }
     meta_file.write_text(json.dumps(meta, indent=2), encoding="utf-8")
     print(f"Packaged {n_files} files into {archive} ({archive.stat().st_size / 1024**3:.2f} GiB)")

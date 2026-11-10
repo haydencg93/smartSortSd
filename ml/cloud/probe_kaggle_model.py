@@ -28,7 +28,7 @@ def run(args):
     previous_sha = hashlib.sha256(previous.read_bytes()).hexdigest() if previous.is_file() else "none"
 
     policy = {
-        "schema": 2,
+        "schema": 3,
         "kernel": args.kernel,
         "dataset_ref": run_data.get("dataset_ref"),
         "model_sha256": model_sha,
@@ -36,11 +36,17 @@ def run(args):
         "validator_sha256": validator_sha,
         "previous_model_sha256": previous_sha,
         "thresholds": [args.min_accuracy, args.min_macro_f1,
-                       args.min_glass_recall, args.min_trash_recall],
+                       args.min_glass_recall, args.min_trash_recall,
+                       args.min_class_recall, args.max_low_confidence_rate],
+        # A new training source or validation gate invalidates the cached review.
+        "train_source_sha256": hashlib.sha256(
+            (Path(__file__).resolve().parents[1] / "train_data.py").read_bytes()).hexdigest(),
+        "setup_source_sha256": hashlib.sha256(
+            (Path(__file__).resolve().parents[1] / "setup_data.py").read_bytes()).hexdigest(),
         "auto_commit": args.auto_commit.lower() == "true",
     }
     key_sha = hashlib.sha256(json.dumps(policy, sort_keys=True).encode("utf-8")).hexdigest()
-    cache_key = "smartsort-model-review-v2-" + key_sha
+    cache_key = "smartsort-model-review-v3-" + key_sha
     print(f"Latest completed Kaggle model: {model_sha[:16]}...; review cache key: {cache_key}")
     output = os.getenv("GITHUB_OUTPUT")
     if output:
@@ -59,5 +65,7 @@ if __name__ == "__main__":
     p.add_argument("--min-macro-f1", type=float, default=.75)
     p.add_argument("--min-glass-recall", type=float, default=.80)
     p.add_argument("--min-trash-recall", type=float, default=.80)
+    p.add_argument("--min-class-recall", type=float, default=.50)
+    p.add_argument("--max-low-confidence-rate", type=float, default=.05)
     p.add_argument("--auto-commit", default="false")
     run(p.parse_args())

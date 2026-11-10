@@ -1,8 +1,12 @@
-"""Smart Sort MobileNetV2 API with labels read from the trained checkpoint metadata.
+"""Smart Sort MobileNetV2 API with configurable location-aware disposal rules.
 
-Retains the exact existing GET /health and POST /classify JSON formats.
-No UI, camera-client, or test changes. Material-only routing is approximate;
-object type and cleanliness are NOT determined by the material classifier.
+GET /health and POST /classify retain their existing JSON response schemas.
+Predicted class describes what the MODEL sees, not a guarantee an item is clean,
+empty, safe to discard, or accepted by a campus collection program.
+
+Location rules live in the *only* added repository file: rules/uiowa.json.
+Additional locations can later be added under its ``locations`` key. The model
+classifier is independent of the location-specific disposal decision.
 """
 import io
 import json
@@ -22,41 +26,45 @@ from pydantic import BaseModel
 
 logger = logging.getLogger('smart-sort-api')
 OLD_CLASSES = ['cardboard', 'glass', 'metal', 'paper', 'plastic', 'trash']
-# Prefer the newest trained model, but retain legacy six-class compatibility.
+HERE = Path(__file__).resolve().parent
 DEFAULT_MODEL = ('smart_sort_mobilenetv2_combined.pth'
                  if Path('smart_sort_mobilenetv2_combined.pth').is_file()
                  else 'smart_sort_mobilenetv2_6class.pth')
 MODEL_PATH = os.getenv('SMARTSORT_MODEL_PATH', DEFAULT_MODEL)
+RULES_PATH = Path(os.getenv('SMARTSORT_RULES_PATH', str(HERE / 'rules' / 'uiowa.json')))
 MATERIAL_CLASSES = OLD_CLASSES.copy()
+VALID_DISPOSALS = {'recycling', 'landfill', 'special_disposal', 'manual_review'}
 
-# Basic University of Iowa campus bin guidance (NOT Iowa City curbside rules):
-# https://sustainability.uiowa.edu/what-bin
-# https://sustainability.uiowa.edu/sites/sustainability.uiowa.edu/files/2025-02/recycle-poster-8.5x11-original-pics.pdf
-# Clean, dry, empty cardboard, metal and plastic CONTAINERS, cartons and paper
-# are accepted. Glass and Styrofoam do NOT belong in campus recycling bins.
-# For uncertain materials, landfill is a conservative regular-bin fallback,
-# NOT a claim that every object of that material is safe for landfill.
-# Rubber TIRES, electronics, batteries, etc require separate handling.
-# Reusable textile items should preferably be donated/reused, not landfilled.
-UIOWA_RULES = {
-    'cardboard': 'recycling',
-    'celluloseacetate': 'landfill',
-    'glass': 'landfill',
-    'metal': 'recycling',
-    'paper': 'recycling',
-    'plastic': 'recycling',
-    'polystyrene': 'landfill',
-    'rubber': 'landfill',
-    'tetrapak': 'recycling',       # Cartons when clean, dry, empty
-    'textile': 'landfill',        # Reuse/donation is preferable, not regular recycling
-    'trash': 'landfill',
-}
-POLICY_URL = 'https://sustainability.uiowa.edu/what-bin'
+
+def load_location_rules(path=RULES_PATH, location=None):
+    """Reject malformed and missing configurations; never silently fall back."""
+    data = json.loads(Path(path).read_text(encoding='utf-8'))
+    if data.get('schema_version') != 1 or not isinstance(data.get('locations'), dict):
+        raise ValueError(f'Invalid rules schema: {path}')
+    chosen = location or os.getenv('SMARTSORT_LOCATION') or data.get('default_location')
+    locations = data['locations']
+    if chosen not in locations:
+        raise ValueError(f'Unknown location {chosen!r}; supported locations: {sorted(locations)}')
+    entries = locations[chosen].get('rules')
+    if not isinstance(entries, dict) or not entries:
+        raise ValueError(f'No disposal rules for {chosen!r}')
+    result = {}
+    for label, entry in entries.items():
+        if not isinstance(label, str) or not label or not isinstance(entry, dict):
+            raise ValueError(f'Invalid rule entry: {label!r}')
+        disposition = entry.get('disposal')
+        if disposition not in VALID_DISPOSALS:
+            raise ValueError(f'Invalid disposal {disposition!r} for {label!r}')
+        result[label] = disposition
+    return chosen, result
+
+
+LOCATION, UIOWA_RULES = load_location_rules()
 preprocess = transforms.Compose([
     transforms.Resize((224, 224)), transforms.ToTensor(),
     transforms.Normalize([.485, .456, .406], [.229, .224, .225]),
 ])
-app = FastAPI(title='Smart Sort Classification API', version='1.2.0')
+app = FastAPI(title='Smart Sort Classification API', version='1.3.0')
 app.add_middleware(CORSMiddleware, allow_origins=['*'], allow_methods=['*'], allow_headers=['*'])
 model = None
 
@@ -70,14 +78,19 @@ class ClassificationResponse(BaseModel):
 
 def read_class_order(checkpoint_path, state_dict):
     sidecar = checkpoint_path.with_suffix('.classes.json')
+    if 'classifier.1.weight' not in state_dict:
+        raise ValueError('Checkpoint missing MobileNetV2 classifier.1.weight')
     num_outputs = state_dict['classifier.1.weight'].shape[0]
     if sidecar.is_file():
         data = json.loads(sidecar.read_text(encoding='utf-8'))
-        classes = data['classes'] if isinstance(data, dict) else data
-        if not isinstance(classes, list) or len(classes) != num_outputs or len(set(classes)) != len(classes):
+        classes = data.get('classes') if isinstance(data, dict) else data
+        if (not isinstance(classes, list) or len(classes) != num_outputs
+                or len(set(classes)) != len(classes)
+                or not all(isinstance(label, str) and label for label in classes)):
             raise ValueError(f'Invalid class metadata in {sidecar}')
-        if any(label not in UIOWA_RULES for label in classes):
-            raise ValueError(f'No University of Iowa routing rule for: {set(classes) - set(UIOWA_RULES)}')
+        missing = set(classes) - set(UIOWA_RULES)
+        if missing:
+            raise ValueError(f'No {LOCATION} routing rules for {sorted(missing)}')
         return classes
     if num_outputs == len(OLD_CLASSES):
         logger.warning('No classes.json found; assuming legacy six-class order for %s', checkpoint_path)
@@ -90,7 +103,7 @@ def read_class_order(checkpoint_path, state_dict):
 def load_model():
     global model, MATERIAL_CLASSES
     checkpoint = Path(MODEL_PATH)
-    logger.info('Loading MobileNetV2 from %s', checkpoint)
+    logger.info('Loading MobileNetV2 from %s for location %s', checkpoint, LOCATION)
     state = torch.load(checkpoint, map_location='cpu', weights_only=True)
     if isinstance(state, dict) and 'model_state_dict' in state:
         state = state['model_state_dict']
@@ -125,6 +138,14 @@ async def classify(file: UploadFile = File(...)):
         probabilities = F.softmax(model(x), dim=1)[0]
         confidence, idx = probabilities.max(dim=0)
     material = MATERIAL_CLASSES[int(idx)]
-    return ClassificationResponse(classification=UIOWA_RULES[material],
+    disposition = UIOWA_RULES[material]
+    # Optional abstention. Disabled by default to preserve existing API behavior;
+    # threshold must be calibrated on held-out camera photographs before enabling.
+    threshold = float(os.getenv('SMARTSORT_MIN_CONFIDENCE', '0'))
+    if not 0 <= threshold <= 1:
+        raise RuntimeError('SMARTSORT_MIN_CONFIDENCE must be between 0 and 1')
+    if float(confidence) < threshold:
+        disposition = 'manual_review'
+    return ClassificationResponse(classification=disposition,
                                   confidence=round(float(confidence), 4), material=material,
                                   latency_ms=round((time.perf_counter()-started)*1000, 1))
