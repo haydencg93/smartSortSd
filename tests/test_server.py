@@ -1,47 +1,25 @@
-import json
-import sqlite3
-import tempfile
-import threading
 import unittest
-from functools import partial
-from http.server import ThreadingHTTPServer
-from pathlib import Path
-from urllib.error import HTTPError
-from urllib.request import Request, urlopen
+from unittest.mock import Mock
 
-from server.server import ScanRequestHandler, initialize_database
+from fastapi.testclient import TestClient
+
+from server.server import app, get_repo
 
 
 class ScanServerTests(unittest.TestCase):
     def setUp(self):
-        self.temp_dir = tempfile.TemporaryDirectory()
-        self.db_path = str(Path(self.temp_dir.name) / "test.sqlite3")
-        initialize_database(self.db_path)
-        handler = partial(ScanRequestHandler, db_path=self.db_path)
-        self.server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
-        self.thread = threading.Thread(target=self.server.serve_forever)
-        self.thread.start()
-        self.base_url = f"http://127.0.0.1:{self.server.server_port}"
+        self.repo = Mock()
+        self.repo.log_scan.return_value = 42
+        app.dependency_overrides[get_repo] = lambda: self.repo
+        self.client = TestClient(app)
 
     def tearDown(self):
-        self.server.shutdown()
-        self.thread.join()
-        self.server.server_close()
-        self.temp_dir.cleanup()
-
-    def post_scan(self, payload):
-        request = Request(
-            f"{self.base_url}/api/scan",
-            data=json.dumps(payload).encode("utf-8"),
-            headers={"Content-Type": "application/json"},
-            method="POST",
-        )
-        with urlopen(request) as response:
-            return response.status, json.loads(response.read())
+        app.dependency_overrides.clear()
 
     def test_classified_scan_is_available_to_dashboard(self):
-        status, response = self.post_scan(
-            {
+        response = self.client.post(
+            "/api/scan",
+            json={
                 "barcode": "012345678905",
                 "item_name": "Bottle",
                 "material": "plastic",
@@ -50,42 +28,41 @@ class ScanServerTests(unittest.TestCase):
             }
         )
 
-        self.assertEqual(status, 201)
-        self.assertEqual(response["status"], "success")
-        with sqlite3.connect(self.db_path) as connection:
-            row = connection.execute(
-                "SELECT input_method, category, status, barcode, item_name, material "
-                "FROM transactions"
-            ).fetchone()
-        self.assertEqual(
-            row,
-            ("barcode", "recycling", "success", "012345678905", "Bottle", "plastic"),
-        )
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.json()["status"], "success")
+        self.assertEqual(response.json()["transaction_id"], 42)
+        self.assertEqual(response.json()["bin_direction"], "left")
+        self.repo.log_scan.assert_called_once()
+        scan, status, direction = self.repo.log_scan.call_args.args
+        self.assertEqual(scan.barcode, "012345678905")
+        self.assertEqual(scan.item_name, "Bottle")
+        self.assertEqual(scan.material, "plastic")
+        self.assertEqual(status, "success")
+        self.assertEqual(direction, "left")
 
     def test_unclassified_scan_is_logged_without_a_disposal_transaction(self):
-        status, response = self.post_scan(
-            {"barcode": "12345", "material": "unknown", "category": None}
+        self.repo.log_scan.return_value = None
+        response = self.client.post(
+            "/api/scan",
+            json={"barcode": "12345", "material": "unknown", "category": None},
         )
 
-        self.assertEqual(status, 201)
-        self.assertEqual(response["status"], "retry")
-        self.assertIsNone(response["transaction_id"])
-        with sqlite3.connect(self.db_path) as connection:
-            event_count = connection.execute("SELECT COUNT(*) FROM scanner_events").fetchone()[0]
-            transaction_count = connection.execute("SELECT COUNT(*) FROM transactions").fetchone()[0]
-        self.assertEqual(event_count, 1)
-        self.assertEqual(transaction_count, 0)
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.json()["status"], "retry")
+        self.assertIsNone(response.json()["transaction_id"])
+        self.assertIsNone(response.json()["bin_direction"])
+        self.repo.log_scan.assert_called_once()
+        _, status, direction = self.repo.log_scan.call_args.args
+        self.assertEqual(status, "retry")
+        self.assertIsNone(direction)
 
     def test_missing_barcode_is_rejected(self):
-        request = Request(
-            f"{self.base_url}/api/scan",
-            data=b'{"category":"trash"}',
-            headers={"Content-Type": "application/json"},
-            method="POST",
+        response = self.client.post(
+            "/api/scan",
+            json={"category": "trash"},
         )
-        with self.assertRaises(HTTPError) as error:
-            urlopen(request)
-        self.assertEqual(error.exception.code, 400)
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("barcode", response.json()["error"])
 
 
 if __name__ == "__main__":

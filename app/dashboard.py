@@ -15,7 +15,7 @@ Expected transactions table schema (created by ``server.py``):
                                                -- NULL for pure barcode lookups with no image capture
     )
 
-Run with:  streamlit run app/dashboard.py
+Run with:  streamlit run dashboard.py
 """
 
 import os
@@ -23,14 +23,14 @@ import sqlite3
 import warnings
 from datetime import datetime, timedelta
 from pathlib import Path
-
-import altair as alt
+ 
+import altair as alt # data graphs
 import numpy as np
 import pandas as pd
 import streamlit as st
 from PIL import Image, ImageDraw
 
-warnings.filterwarnings("ignore", category=alt.AltairDeprecationWarning)
+warnings.filterwarnings("ignore", category=alt.AltairDeprecationWarning) # 
 
 # ----------------------------------------------------------------------------
 # Config
@@ -55,7 +55,7 @@ MOCK_IMAGE_DIR = str(PROJECT_ROOT / "mock_captures")
 CATEGORIES = {
     "recycling": {"bin_direction": "left", "color": "#2F6B4F"},
     "trash": {"bin_direction": "right", "color": "#8C6A4F"},
-    # "compost": {"bin_direction": "center", "color": "#7A8C4F"},  # example: uncomment to extend
+    "user_override": {"bin_direction": "-(put in pile over there)-", "color": "#7A8C4F"}, # POSSIBLY 3rd CASE ?   
 }
 
 INPUT_METHODS = {
@@ -203,17 +203,14 @@ def _ensure_mock_images() -> dict:
 # ----------------------------------------------------------------------------
 
 @st.cache_data(ttl=10)  # short TTL so the dashboard stays close to live once real data exists
-def load_data() -> tuple[pd.DataFrame, str | None]:
+def load_data() -> pd.DataFrame:
     """Load transactions from the configured SQLite database."""
     if not os.path.exists(DB_PATH):
-        return pd.DataFrame(), "Database file does not exist."
-    try:
-        with sqlite3.connect(DB_PATH, timeout=2) as connection:
-            df = pd.read_sql_query("SELECT * FROM transactions", connection)
-    except sqlite3.Error as error:
-        return pd.DataFrame(), str(error)
+        return pd.DataFrame()
+    with sqlite3.connect(DB_PATH) as connection:
+        df = pd.read_sql_query("SELECT * FROM transactions", connection)
     df["timestamp"] = pd.to_datetime(df["timestamp"])
-    return df, None
+    return df
 
 
 @st.cache_data
@@ -288,56 +285,16 @@ data_source = st.sidebar.selectbox(
 
 if data_source == "Sample data":
     df_raw = _generate_mock_data()
-    database_error = None
     st.sidebar.caption("Preview mode · sample transactions are not saved.")
 else:
-    connection_status = st.sidebar.status(
-        "Connecting to live database…",
-        state="running",
-        expanded=False,
-    )
-    if not os.path.exists(DB_PATH):
-        df_raw = pd.DataFrame()
-        database_error = None
-        connection_status.update(
-            label="Waiting to connect · database file not found",
-            state="running",
-            expanded=True,
-        )
-    else:
-        df_raw, database_error = load_data()
-        if database_error:
-            connection_status.update(
-                label="Waiting for a readable transactions table",
-                state="error",
-                expanded=True,
-            )
-        elif df_raw.empty:
-            connection_status.update(
-                label="Connected · waiting for transactions",
-                state="complete",
-                expanded=False,
-            )
-        else:
-            connection_status.update(
-                label="Connected to live database",
-                state="complete",
-                expanded=False,
-            )
-    if st.sidebar.button("Check connection again", icon=":material/refresh:"):
-        load_data.clear()
-        st.rerun()
+    df_raw = load_data()
 
 if df_raw.empty:
     st.title("Waste sorter dashboard", icon=":material/recycling:")
-    if data_source == "Sample data":
-        st.info("No sample transactions are available.")
-    elif database_error:
-        st.error(f"Could not read transactions from the live database: {database_error}")
-    elif not os.path.exists(DB_PATH):
-        st.info("Waiting for the live database. Choose Sample data to preview the dashboard now.")
+    if not os.path.exists(DB_PATH):
+        st.info("No database was found. Choose Sample data to preview the dashboard.")
     else:
-        st.info("Connected to the database. Waiting for the first classified transaction.")
+        st.info("The database is ready, but it has no classified transactions yet.")
     st.stop()
 
 st.sidebar.markdown("### Filters")

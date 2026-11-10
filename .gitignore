@@ -4,3 +4,8 @@ ml/raw_data
 __pycache__/
 *.py[cod]
 .DS_Store
+.env
+uploads/
+waste_sorter.db
+waste_sorter.db-wal
+waste_sorter.db-shm
