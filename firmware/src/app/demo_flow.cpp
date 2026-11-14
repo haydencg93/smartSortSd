@@ -33,6 +33,10 @@ static void step_analyze(lv_timer_t* timer) {
         pending_flow_timer = nullptr;
     }
 
+    if(!ui::capture_scan_image()){
+        printf("[Camera] Warning: Continuing without a captured image.\n");
+    }
+
     ui::show_analyzing();
     after(2000, step_result);
 }
@@ -40,7 +44,7 @@ static void step_analyze(lv_timer_t* timer) {
 // Step 1 (fake): "proximity sensor fired". On the real device this comes from the HC-SR04/VL53L1X.
 static void on_idle_tapped() {
     ui::show_scan_prompt();
-    after(2500, step_analyze);
+    after(5000, step_analyze);
 }
 
 void demo_flow_start_scan(){

@@ -37,6 +37,7 @@ void init(const Callbacks& cb);
 
 void show_idle();
 void show_scan_prompt();
+bool capture_scan_image();
 void show_analyzing();
 void show_result(Bin bin, const char* item_name);
 

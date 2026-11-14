@@ -536,6 +536,37 @@ void show_scan_prompt() {
     start_preview();
 }
 
+bool capture_scan_image() {
+    if (!camera::is_running() || S.preview_buffer == nullptr) {
+        Serial.println("[Camera] ERROR: Camera or preview buffer unavailable.");
+        return false;
+    }
+
+    uint16_t width = 0;
+    uint16_t height = 0;
+
+    if (!camera::capture_rgb565(
+            S.preview_buffer,
+            PREVIEW_BYTES,
+            width,
+            height)) {
+        Serial.println("[Camera] ERROR: Image capture failed.");
+        return false;
+    }
+
+    if (width != PREVIEW_W || height != PREVIEW_H) {
+        Serial.println("[Camera] ERROR: Unexpected image dimensions.");
+        return false;
+    }
+
+    // Keep the successfully captured frame in the preview buffer.
+    lv_image_set_src(S.preview_image, &S.preview_dsc);
+    lv_obj_invalidate(S.preview_image);
+
+    Serial.println("[Camera] Final image captured successfully.");
+    return true;
+}
+
 void show_analyzing() {
     stop_preview();
     arm_timeout(T_ANALYZE_MS, timeout_to_idle);
