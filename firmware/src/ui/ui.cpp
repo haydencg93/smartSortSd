@@ -23,7 +23,7 @@ namespace {
 
 // Timeouts: if the user walks away mid-flow, fall back to Idle.
 constexpr uint32_t T_SCAN_MS      = 30000;
-constexpr uint32_t T_ANALYZE_MS   = 10000;
+constexpr uint32_t T_ANALYZE_MS   = 30000;
 constexpr uint32_t T_RESULT_MS    = 20000;
 constexpr uint32_t T_CORRECT_MS   = 20000;
 constexpr uint32_t T_THANKS_MS    = 3000;
