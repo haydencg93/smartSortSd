@@ -40,5 +40,7 @@ void show_scan_prompt();
 bool capture_scan_image();
 void show_analyzing();
 void show_result(Bin bin, const char* item_name);
+void show_special_disposal();
+void show_manual_review();
 
 }  // namespace ui

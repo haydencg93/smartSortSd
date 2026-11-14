@@ -47,6 +47,8 @@ struct State {
     lv_obj_t* scr_result    = nullptr;   // used for screens 4, 5 and 8
     lv_obj_t* scr_pick      = nullptr;
     lv_obj_t* scr_reason    = nullptr;
+    lv_obj_t* scr_special = nullptr;
+    lv_obj_t* scr_review  = nullptr;
 
     // widgets we need to update later
     lv_obj_t* bar          = nullptr;
@@ -508,6 +510,62 @@ void build_reason() {                     // Screen 7
                 &lv_font_montserrat_20, 2, lv_color_hex(0xBDB7AB), on_reason, (void*)(intptr_t)Reason::None);
 }
 
+
+void on_special_done(lv_event_t*) {
+    show_idle();
+}
+
+void build_special_disposal() {
+    S.scr_special = new_screen(C_WHITE);
+
+    make_header(S.scr_special, "SPECIAL DISPOSAL", C_RUST);
+
+    lv_obj_t* panel = make_box(S.scr_special, 40, 78, 400, 116);
+    lv_obj_set_style_radius(panel, 16, 0);
+    lv_obj_set_style_bg_color(panel, C_PEACH, 0);
+    lv_obj_set_style_bg_opa(panel, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(panel, 2, 0);
+    lv_obj_set_style_border_color(panel, C_RUST, 0);
+
+    lv_obj_t* message = make_label(panel, "This item needs a\nseparate disposal option.", &lv_font_montserrat_28, C_RUST);
+    lv_obj_center(message);
+
+    lv_obj_t* detail = make_label(S.scr_special, "Do not place it in recycling or trash.\n"
+        "Use an approved collection point.", &lv_font_montserrat_16, C_TEXT);
+
+    lv_obj_set_style_text_align(detail, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_align(detail, LV_ALIGN_TOP_MID, 0, 207);
+
+    make_button(S.scr_special, "Return to start", 140, 263, 200, 46, C_GREEN, C_WHITE,
+        &lv_font_montserrat_20, 0, C_GREEN, on_special_done, nullptr);
+}
+
+void build_manual_review() {
+    S.scr_review = new_screen(C_WHITE);
+
+    make_header(S.scr_review, "PLEASE ASK FOR HELP", C_RUST);
+
+    lv_obj_t* panel = make_box(S.scr_review, 40, 78, 400, 116);
+    lv_obj_set_style_radius(panel, 16, 0);
+    lv_obj_set_style_bg_color(panel, C_GREY, 0);
+    lv_obj_set_style_bg_opa(panel, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(panel, 2, 0);
+    lv_obj_set_style_border_color(panel, C_RUST, 0);
+
+    lv_obj_t* message = make_label(panel, "We couldn't confidently\nidentify this item.", &lv_font_montserrat_28, C_RUST);
+    lv_obj_center(message);
+
+    lv_obj_t* detail = make_label(S.scr_review, "Please don't place it yet.\n"
+        "Ask a staff member for assistance.", &lv_font_montserrat_16, C_TEXT);
+
+    lv_obj_set_style_text_align(detail, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_align(detail, LV_ALIGN_TOP_MID, 0, 207);
+
+    make_button(S.scr_review, "Return to start", 140, 263, 200, 46, C_GREEN, C_WHITE,
+        &lv_font_montserrat_20, 0, C_GREEN, on_special_done, nullptr);
+}
+
+
 }  // namespace
 
 // ---------------------------------------------------------------------------
@@ -521,6 +579,8 @@ void init(const Callbacks& cb) {
     build_result();
     build_pick();
     build_reason();
+    build_special_disposal();
+    build_manual_review();
     go(S.scr_idle, /*animate=*/false);
 }
 
@@ -593,6 +653,20 @@ void show_result(Bin bin, const char* item_name) {
     apply_result(bin, /*corrected=*/false);
     arm_timeout(T_RESULT_MS, timeout_to_idle);
     go(S.scr_result);
+}
+
+void show_special_disposal() {
+    stop_preview();
+    cancel_timeout();
+    arm_timeout(T_RESULT_MS, timeout_to_idle);
+    go(S.scr_special);
+}
+
+void show_manual_review() {
+    stop_preview();
+    cancel_timeout();
+    arm_timeout(T_RESULT_MS, timeout_to_idle);
+    go(S.scr_review);
 }
 
 }  // namespace ui
