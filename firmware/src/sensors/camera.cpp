@@ -1,9 +1,10 @@
+
 #include "sensors/camera.h"
 
 #include <Arduino.h>
 #include <esp_camera.h>
+#include <esp_heap_caps.h>
 #include <string.h>
-#include <img_converters.h>
 #include <stdlib.h>
 
 namespace camera {
@@ -15,10 +16,9 @@ bool initialized = false;
 // Waveshare ESP32-S3-Touch-LCD-3.5 Rev 2.0
 constexpr int CAMERA_PWDN = -1;
 constexpr int CAMERA_RESET = -1;
-
 constexpr int CAMERA_XCLK = 38;
 
-// Reuse the I2C bus already initialized by the board driver.
+// Reuse the board's initialized I2C bus.
 constexpr int CAMERA_SIOD = -1;
 constexpr int CAMERA_SIOC = -1;
 constexpr int CAMERA_I2C_PORT = 0;
@@ -37,16 +37,16 @@ constexpr int CAMERA_VSYNC = 17;
 constexpr int CAMERA_HREF = 18;
 constexpr int CAMERA_PCLK = 41;
 
-} // anonymous namespace
+enum class CameraMode {
+    Preview,
+    Capture
+};
 
-
-bool start() {
+bool initialize(CameraMode mode, uint8_t quality = 10) {
 
     if (initialized) {
         return true;
     }
-
-    Serial.println("[Camera] Starting OV2640...");
 
     camera_config_t config = {};
 
@@ -75,14 +75,29 @@ bool start() {
     config.ledc_timer = LEDC_TIMER_0;
     config.ledc_channel = LEDC_CHANNEL_0;
 
-    // RGB565 allows LVGL to display the camera frame directly.
-    config.pixel_format = PIXFORMAT_RGB565;
-    config.frame_size = FRAMESIZE_QVGA;
-    config.jpeg_quality = 12;
-
     config.fb_count = 1;
     config.fb_location = CAMERA_FB_IN_PSRAM;
     config.grab_mode = CAMERA_GRAB_WHEN_EMPTY;
+
+    if (mode == CameraMode::Preview) {
+        config.pixel_format = PIXFORMAT_RGB565;
+        config.frame_size = FRAMESIZE_QVGA;
+        config.jpeg_quality = 12;
+    } else {
+        config.pixel_format = PIXFORMAT_JPEG;
+        config.frame_size = FRAMESIZE_SVGA;
+        config.jpeg_quality = quality;
+    }
+
+    Serial.printf(
+        "[Camera] Initializing %s mode...\n",
+        mode == CameraMode::Preview ? "preview" : "capture"
+    );
+
+    if (!psramFound()) {
+        Serial.println("[Camera] ERROR: PSRAM not detected.");
+        return false;
+    }
 
     const esp_err_t result = esp_camera_init(&config);
 
@@ -98,11 +113,20 @@ bool start() {
 
     initialized = true;
 
-    Serial.println("[Camera] OV2640 started.");
-    Serial.println("[Camera] Resolution: 320 x 240");
-    Serial.println("[Camera] Format: RGB565");
+    if (mode == CameraMode::Preview) {
+        Serial.println("[Camera] Preview ready: 320x240 RGB565");
+    } else {
+        Serial.println("[Camera] Capture ready: 800x600 JPEG");
+    }
 
     return true;
+}
+
+} // anonymous namespace
+
+
+bool start() {
+    return initialize(CameraMode::Preview);
 }
 
 
@@ -162,10 +186,8 @@ bool capture_rgb565(
         capacity >= required_size;
 
     if (valid) {
-        // Swap the two bytes of each RGB565 pixel to match
-        // the byte order expected by the LVGL image renderer.
         for (size_t i = 0; i < required_size; i += 2) {
-            destination[i]     = frame->buf[i + 1];
+            destination[i] = frame->buf[i + 1];
             destination[i + 1] = frame->buf[i];
         }
 
@@ -178,13 +200,13 @@ bool capture_rgb565(
     return valid;
 }
 
+
 bool capture_jpeg(
     uint8_t** jpeg_data,
     size_t& jpeg_size,
     uint8_t quality
 ) {
 
-    // Initialize outputs so failure never leaves stale pointers or sizes.
     if (jpeg_data == nullptr) {
         return false;
     }
@@ -192,52 +214,81 @@ bool capture_jpeg(
     *jpeg_data = nullptr;
     jpeg_size = 0;
 
-    if (!initialized) {
-        Serial.println("[Camera] ERROR: Cannot capture JPEG; camera is stopped.");
+    // The preview timer must be stopped before this function is called.
+    // Switch modes by fully releasing the preview camera first.
+    if (initialized) {
+        stop();
+    }
+
+    if (!initialize(CameraMode::Capture, quality)) {
+        Serial.println("[Camera] ERROR: Could not initialize capture mode.");
         return false;
+    }
+
+    Serial.println("[Camera] Capturing 800x600 JPEG...");
+
+    // Discard an initial frame so the sensor can settle after initialization.
+    camera_fb_t* warmup = esp_camera_fb_get();
+
+    if (warmup != nullptr) {
+        esp_camera_fb_return(warmup);
     }
 
     camera_fb_t* frame = esp_camera_fb_get();
 
     if (frame == nullptr) {
         Serial.println("[Camera] ERROR: JPEG frame capture failed.");
+        stop();
         return false;
     }
 
-    bool success = false;
+    bool valid =
+        frame->format == PIXFORMAT_JPEG &&
+        frame->width == 800 &&
+        frame->height == 600 &&
+        frame->len > 0;
 
-    if (frame->format == PIXFORMAT_RGB565) {
-
-        // The camera's original frame is passed directly to the encoder.
-        // It has not been byte-swapped for LVGL.
-        success = fmt2jpg(
-            frame->buf,
-            frame->len,
-            frame->width,
-            frame->height,
-            PIXFORMAT_RGB565,
-            quality,
-            jpeg_data,
-            &jpeg_size
+    if (!valid) {
+        Serial.printf(
+            "[Camera] ERROR: Unexpected frame: %ux%u, format=%d, bytes=%u\n",
+            static_cast<unsigned int>(frame->width),
+            static_cast<unsigned int>(frame->height),
+            static_cast<int>(frame->format),
+            static_cast<unsigned int>(frame->len)
         );
+
+        esp_camera_fb_return(frame);
+        stop();
+        return false;
     }
+
+    // Allocate independent memory so the JPEG survives camera shutdown.
+    uint8_t* copy = static_cast<uint8_t*>(
+        heap_caps_malloc(
+            frame->len,
+            MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT
+        )
+    );
+
+    if (copy == nullptr) {
+        Serial.println("[Camera] ERROR: JPEG memory allocation failed.");
+
+        esp_camera_fb_return(frame);
+        stop();
+        return false;
+    }
+
+    memcpy(copy, frame->buf, frame->len);
+
+    jpeg_size = frame->len;
+    *jpeg_data = copy;
 
     esp_camera_fb_return(frame);
 
-    if (!success) {
-        Serial.println("[Camera] ERROR: JPEG conversion failed.");
-
-        if (*jpeg_data != nullptr) {
-            free(*jpeg_data);
-            *jpeg_data = nullptr;
-        }
-
-        jpeg_size = 0;
-        return false;
-    }
-
     Serial.printf(
-        "[Camera] JPEG captured: %u bytes\n",
+        "[Camera] Native JPEG captured: %ux%u, %u bytes\n",
+        800,
+        600,
         static_cast<unsigned int>(jpeg_size)
     );
 

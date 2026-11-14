@@ -30,7 +30,7 @@ namespace camera {
     bool capture_jpeg(
         uint8_t** jpeg_data,
         size_t& jpeg_size,
-        uint8_t quality = 12
+        uint8_t quality = 10
     );
 
 }
