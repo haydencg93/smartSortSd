@@ -1,5 +1,8 @@
 #include "ui/ui.h"
+#include "sensors/camera.h"
 
+#include <Arduino.h>
+#include <esp_heap_caps.h>
 #include <stdio.h>
 
 namespace ui {
@@ -19,7 +22,7 @@ namespace {
 #define C_TEXT    lv_color_hex(0x33443D)   // body text on white
 
 // Timeouts: if the user walks away mid-flow, fall back to Idle.
-constexpr uint32_t T_SCAN_MS      = 15000;
+constexpr uint32_t T_SCAN_MS      = 30000;
 constexpr uint32_t T_ANALYZE_MS   = 10000;
 constexpr uint32_t T_RESULT_MS    = 20000;
 constexpr uint32_t T_CORRECT_MS   = 20000;
@@ -55,6 +58,15 @@ struct State {
     lv_obj_t* res_ok_label = nullptr;
     lv_obj_t* res_banner   = nullptr;
     bool      arrow_right  = false;
+
+    // Live camera preview
+    lv_obj_t* preview_image = nullptr;
+    lv_obj_t* preview_status = nullptr;
+    lv_timer_t* preview_timer = nullptr;
+
+    uint8_t* preview_buffer = nullptr;
+    lv_image_dsc_t preview_dsc = {};
+
 };
 
 State S;
@@ -273,6 +285,96 @@ void on_idle_tap(lv_event_t*) {
 void bar_anim_cb(void* bar, int32_t v) { lv_bar_set_value((lv_obj_t*)bar, v, LV_ANIM_OFF); }
 
 // ---------------------------------------------------------------------------
+// Camera Preview
+// ---------------------------------------------------------------------------
+constexpr uint16_t PREVIEW_W = 320;
+constexpr uint16_t PREVIEW_H = 240;
+constexpr size_t PREVIEW_BYTES = static_cast<size_t>(PREVIEW_W) * PREVIEW_H *2;
+
+void preview_update(lv_timer_t*){
+    if (!camera::is_running() || S.preview_buffer == nullptr){
+        return;
+    }
+
+    uint16_t width = 0;
+    uint16_t height = 0;
+
+    if(!camera::capture_rgb565(S.preview_buffer, PREVIEW_BYTES, width, height)) {
+        return;
+    }
+
+    // The descriptor points to our persistent PSRAM buffer.
+    // The camera's own frame buffer has already been returned.
+    if(width != PREVIEW_W || height != PREVIEW_H){
+        Serial.println("[Camera] Unexpected preview dimensions.");
+        return;
+    }
+
+    lv_image_set_src(S.preview_image, &S.preview_dsc);
+    lv_obj_invalidate(S.preview_image);
+
+    //Hide the startup message after the first successful frame.
+    if(S.preview_status){
+        lv_obj_add_flag(S.preview_status, LV_OBJ_FLAG_HIDDEN);
+    }
+}
+
+void stop_preview(){
+    // Stop the LVGL timer before shutting down the camera.
+    if(S.preview_timer != nullptr){
+        lv_timer_delete(S.preview_timer);
+        S.preview_timer = nullptr;
+    }
+
+    camera::stop();
+}
+
+void start_preview(){
+    stop_preview();
+
+    if(S.preview_buffer == nullptr){
+        Serial.println("[Camera] Allocating preview buffer in PSRAM...");
+
+        S.preview_buffer = static_cast<uint8_t*>(
+            heap_caps_malloc(
+                PREVIEW_BYTES,
+                MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT
+            )
+        );
+
+        if (S.preview_buffer == nullptr){
+            Serial.println("[Camera] ERROR: Could not allocate preview buffer.");
+
+            lv_label_set_text(S.preview_status, "Preview memory unavailable");
+            lv_obj_remove_flag(S.preview_status, LV_OBJ_FLAG_HIDDEN);
+            return;
+        }
+
+        // Configure the LVGL 9 image descriptor.
+        S.preview_dsc.header.magic = LV_IMAGE_HEADER_MAGIC;
+        S.preview_dsc.header.cf = LV_COLOR_FORMAT_RGB565;
+        S.preview_dsc.header.w = PREVIEW_W;
+        S.preview_dsc.header.h = PREVIEW_H;
+        S.preview_dsc.header.stride = PREVIEW_W * 2;
+        S.preview_dsc.data_size = PREVIEW_BYTES;
+        S.preview_dsc.data = S.preview_buffer;
+    }
+
+    lv_label_set_text(S.preview_status, "Starting camera...");
+    lv_obj_remove_flag(S.preview_status, LV_OBJ_FLAG_HIDDEN);
+
+    if(!camera::start()){
+        Serial.println("[Camera] ERROR: Could not start preview");
+
+        lv_label_set_text(S.preview_status, "Camera preview unavailable");
+        return;
+    }
+
+    //Refresh the preview approximately five times per second
+    S.preview_timer = lv_timer_create(preview_update, 200, nullptr);
+}
+
+// ---------------------------------------------------------------------------
 // Screen builders
 // ---------------------------------------------------------------------------
 void build_idle() {                       // Screen 1
@@ -303,19 +405,24 @@ void build_idle() {                       // Screen 1
 
 void build_scan() {                       // Screen 2
     S.scr_scan = new_screen(C_WHITE);
+
     make_header(S.scr_scan, "Hold your item up to the camera", C_GREEN);
 
-    // Placeholder for the item guide / future live camera preview.
-    lv_obj_t* frame = make_box(S.scr_scan, (W - 220) / 2, 76, 220, 130);
+    // Green outline around the camera preview.
+    lv_obj_t* frame = make_box(S.scr_scan, 76, 60, 328, 248);
+
     lv_obj_set_style_radius(frame, 14, 0);
     lv_obj_set_style_border_width(frame, 3, 0);
     lv_obj_set_style_border_color(frame, C_GREEN, 0);
-    lv_obj_center(make_label(frame, "Item here", &lv_font_montserrat_16, C_TEXT));
 
-    lv_obj_align(make_label(S.scr_scan, "Barcodes scan automatically", &lv_font_montserrat_16, C_TEXT),
-                 LV_ALIGN_TOP_MID, 0, 232);
-    lv_obj_align(make_label(S.scr_scan, "No barcode? We'll take a photo", &lv_font_montserrat_14, C_TEXT),
-                 LV_ALIGN_TOP_MID, 0, 262);
+    // The image itself is 320 x 240 pixels.
+    S.preview_image = lv_image_create(S.scr_scan);
+    lv_obj_set_pos(S.preview_image, 80, 64);
+
+    // Message shown until the first camera frame arrives.
+    S.preview_status = make_label(S.scr_scan, "Starting camera...", &lv_font_montserrat_16, C_TEXT );
+
+    lv_obj_align(S.preview_status, LV_ALIGN_CENTER, 0, 20);
 }
 
 void build_analyzing() {                  // Screen 3
@@ -418,6 +525,7 @@ void init(const Callbacks& cb) {
 }
 
 void show_idle() {
+    stop_preview();
     cancel_timeout();
     go(S.scr_idle);
 }
@@ -425,9 +533,11 @@ void show_idle() {
 void show_scan_prompt() {
     arm_timeout(T_SCAN_MS, timeout_to_idle);
     go(S.scr_scan);
+    start_preview();
 }
 
 void show_analyzing() {
+    stop_preview();
     arm_timeout(T_ANALYZE_MS, timeout_to_idle);
 
     // Fake-progress bar: eases to 90% over ~4.5 s; the real result replaces this screen.
@@ -446,6 +556,7 @@ void show_analyzing() {
 }
 
 void show_result(Bin bin, const char* item_name) {
+    stop_preview();
     S.shown = bin;
     snprintf(S.item, sizeof S.item, "%s", item_name ? item_name : "Unknown item");
     apply_result(bin, /*corrected=*/false);

@@ -1,15 +1,26 @@
 #pragma once
 
+#include <stddef.h>
+#include <stdint.h>
+
 namespace camera {
 
-    // Initialize the OV2640 camera.
-    // Returns true if initialization succeeds.
-    bool begin();
+    // Start the OV2640 camera.
+    bool start();
 
-    // Returns whether the camera has initialized successfully.
-    bool is_initialized();
+    // Stop the camera and release its driver resources.
+    void stop();
 
-    // Capture and verify one JPEG frame.
-    bool capture_test();
+    // Returns whether the camera is currently running.
+    bool is_running();
+
+    // Capture one RGB565 frame and copy it into the supplied buffer.
+    // The caller owns the destination buffer.
+    bool capture_rgb565(
+        uint8_t* destination,
+        size_t capacity,
+        uint16_t& width,
+        uint16_t& height
+    );
 
 }

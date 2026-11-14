@@ -5,7 +5,6 @@
 #include "board/waveshare_touch_lcd_35.h"
 #include "sensors/proximity.h"
 #include "ui/ui.h"
-#include "sensors/camera.h"
 
 namespace {
     uint32_t tick_cb() {
@@ -29,13 +28,6 @@ void setup() {
     lv_init();
     lv_tick_set_cb(tick_cb);
     board::init_waveshare_touch_lcd_35();
-
-    if (!camera::begin()){
-        Serial.println("WARNING: Camera initialization failed.");
-    } else{
-        camera::capture_test();
-    }
-
     demo_flow_init();
     proximity::begin(on_presence_changed);
     Serial.println("Smart Sort UI ready. Tap the idle screen to run the demo flow.");

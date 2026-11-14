@@ -145,7 +145,7 @@ void init_waveshare_touch_lcd_35() {
     }
 
     pinMode(LCD_BACKLIGHT, OUTPUT);
-    digitalWrite(LCD_BACKLIGHT, HIGH);
+    digitalWrite(LCD_BACKLIGHT, LOW);
     lcd.fillScreen(RGB565_BLACK);
 
     lv_display_t* disp = lv_display_create(ui::W, ui::H);
