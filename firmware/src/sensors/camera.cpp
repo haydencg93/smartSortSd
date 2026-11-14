@@ -3,6 +3,8 @@
 #include <Arduino.h>
 #include <esp_camera.h>
 #include <string.h>
+#include <img_converters.h>
+#include <stdlib.h>
 
 namespace camera {
 
@@ -174,6 +176,72 @@ bool capture_rgb565(
     esp_camera_fb_return(frame);
 
     return valid;
+}
+
+bool capture_jpeg(
+    uint8_t** jpeg_data,
+    size_t& jpeg_size,
+    uint8_t quality
+) {
+
+    // Initialize outputs so failure never leaves stale pointers or sizes.
+    if (jpeg_data == nullptr) {
+        return false;
+    }
+
+    *jpeg_data = nullptr;
+    jpeg_size = 0;
+
+    if (!initialized) {
+        Serial.println("[Camera] ERROR: Cannot capture JPEG; camera is stopped.");
+        return false;
+    }
+
+    camera_fb_t* frame = esp_camera_fb_get();
+
+    if (frame == nullptr) {
+        Serial.println("[Camera] ERROR: JPEG frame capture failed.");
+        return false;
+    }
+
+    bool success = false;
+
+    if (frame->format == PIXFORMAT_RGB565) {
+
+        // The camera's original frame is passed directly to the encoder.
+        // It has not been byte-swapped for LVGL.
+        success = fmt2jpg(
+            frame->buf,
+            frame->len,
+            frame->width,
+            frame->height,
+            PIXFORMAT_RGB565,
+            quality,
+            jpeg_data,
+            &jpeg_size
+        );
+    }
+
+    esp_camera_fb_return(frame);
+
+    if (!success) {
+        Serial.println("[Camera] ERROR: JPEG conversion failed.");
+
+        if (*jpeg_data != nullptr) {
+            free(*jpeg_data);
+            *jpeg_data = nullptr;
+        }
+
+        jpeg_size = 0;
+        return false;
+    }
+
+    Serial.printf(
+        "[Camera] JPEG captured: %u bytes\n",
+        static_cast<unsigned int>(jpeg_size)
+    );
+
+    return true;
 }
 
 } // namespace camera

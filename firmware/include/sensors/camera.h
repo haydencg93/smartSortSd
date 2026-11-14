@@ -1,3 +1,4 @@
+
 #pragma once
 
 #include <stddef.h>
@@ -21,6 +22,15 @@ namespace camera {
         size_t capacity,
         uint16_t& width,
         uint16_t& height
+    );
+
+    // Capture one camera frame and encode it as JPEG.
+    // On success, jpeg_data is allocated by the camera library.
+    // The caller MUST release it using free().
+    bool capture_jpeg(
+        uint8_t** jpeg_data,
+        size_t& jpeg_size,
+        uint8_t quality = 12
     );
 
 }

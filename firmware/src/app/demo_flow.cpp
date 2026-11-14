@@ -2,6 +2,8 @@
 #include "ui/ui.h"
 
 #include <stdio.h>
+#include "sensors/camera.h"
+#include <stdlib.h>
 
 static lv_timer_t* pending_flow_timer = nullptr;
 
@@ -35,6 +37,16 @@ static void step_analyze(lv_timer_t* timer) {
 
     if(!ui::capture_scan_image()){
         printf("[Camera] Warning: Continuing without a captured image.\n");
+    } else {
+        uint8_t* jpeg_data = nullptr;
+        size_t jpeg_size = 0;
+
+        if(camera::capture_jpeg(&jpeg_data, jpeg_size)){
+            printf("[Camera] JPEG test successful: %u bytes \n", static_cast<unsigned int>(jpeg_size));
+            free(jpeg_data);
+        } else {
+            printf("[Camera] JPEG test failed. \n");
+        }
     }
 
     ui::show_analyzing();

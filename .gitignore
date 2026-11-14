@@ -31,3 +31,6 @@ firmware/.vscode/launch.json
 firmware/.vscode/ipch
 firmware/.venv/
 ml/.venv/
+
+# Local ESP32 Wi-Fi credentials
+firmware/include/secrets.h
