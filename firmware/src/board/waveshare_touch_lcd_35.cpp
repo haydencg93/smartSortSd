@@ -165,4 +165,12 @@ void init_waveshare_touch_lcd_35() {
     lv_indev_set_read_cb(touch, touch_cb);
 }
 
+void backlight_on() {
+    digitalWrite(LCD_BACKLIGHT, HIGH);
+}
+
+void backlight_off() {
+    digitalWrite(LCD_BACKLIGHT, LOW);
+}
+
 }  // namespace board

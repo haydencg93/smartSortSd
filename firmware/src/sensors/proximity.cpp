@@ -13,9 +13,9 @@ constexpr float THRESHOLD_TOLERANCE_IN = 2.0f;
 constexpr float MAX_DETECTION_DISTANCE_IN =
     DETECTION_THRESHOLD_IN + THRESHOLD_TOLERANCE_IN;
 
-constexpr uint32_t INACTIVITY_TIME_MS = 3000;
+constexpr uint32_t INACTIVITY_TIME_MS = 5000;
 constexpr uint32_t ECHO_TIMEOUT_US = 30000;
-constexpr uint32_t MEASUREMENT_INTERVAL_MS = 60;
+constexpr uint32_t MEASUREMENT_INTERVAL_MS = 500;
 
 PresenceCallback presence_callback = nullptr;
 
