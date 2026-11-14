@@ -1,6 +1,8 @@
 #include <Arduino.h>
 #include <lvgl.h>
 #include <WiFi.h>
+#include <HTTPClient.h>
+#include <WiFiClient.h>
 
 #include "app/demo_flow.h"
 #include "board/waveshare_touch_lcd_35.h"
@@ -43,6 +45,41 @@ namespace {
             Serial.println("[WiFi] The kiosk will continue without WiFi.");
         }
     }
+    
+    void test_classifier_api() {
+        if (WiFi.status() != WL_CONNECTED) {
+            Serial.println("[API] WiFi is not connected. Skipping API test.");
+            return;
+        }
+        
+        WiFiClient client;
+        HTTPClient http;
+        
+        const char* url = "http://10.67.162.143:8000/health";
+        
+        Serial.println("[API] Testing connection to classifier...");
+        
+        http.setConnectTimeout(5000);
+        http.setTimeout(5000);
+        
+        if (!http.begin(client, url)) {
+            Serial.println("[API] Could not initialize HTTP connection.");
+            return;
+        }
+        
+        int status_code = http.GET();
+        
+        if (status_code > 0) {
+            Serial.printf("[API] HTTP status: %d\n", status_code);
+            Serial.print("[API] Response: ");
+            Serial.println(http.getString());
+        } else {
+            Serial.print("[API] Request failed: ");
+            Serial.println(http.errorToString(status_code));
+        }
+        
+        http.end();
+    }
 }
 
 void on_presence_changed(bool active) {
@@ -60,6 +97,7 @@ void setup() {
     Serial.begin(115200);
 
     connect_wifi();
+    test_classifier_api();
 
     lv_init();
     lv_tick_set_cb(tick_cb);
