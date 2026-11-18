@@ -38,17 +38,21 @@ struct State {
     Bin  corrected = Bin::Recycle;   // what the user says is right
     char item[48]  = "";
 
+    float confidence = 0.0f;
+    float latency_ms = 0.0f;
+
     lv_timer_t* timeout = nullptr;   // the one active inactivity timer
 
     // screens
-    lv_obj_t* scr_idle      = nullptr;
-    lv_obj_t* scr_scan      = nullptr;
-    lv_obj_t* scr_analyzing = nullptr;
-    lv_obj_t* scr_result    = nullptr;   // used for screens 4, 5 and 8
-    lv_obj_t* scr_pick      = nullptr;
-    lv_obj_t* scr_reason    = nullptr;
-    lv_obj_t* scr_special = nullptr;
-    lv_obj_t* scr_review  = nullptr;
+    lv_obj_t* scr_idle       = nullptr;
+    lv_obj_t* scr_scan       = nullptr;
+    lv_obj_t* scr_analyzing  = nullptr;
+    lv_obj_t* scr_result     = nullptr;   // used for screens 4, 5 and 8
+    lv_obj_t* scr_pick       = nullptr;
+    lv_obj_t* scr_reason     = nullptr;
+    lv_obj_t* scr_special    = nullptr;
+    lv_obj_t* scr_review     = nullptr;
+    lv_obj_t* scr_wifi_error = nullptr;
 
     // widgets we need to update later
     lv_obj_t* bar          = nullptr;
@@ -56,6 +60,7 @@ struct State {
     lv_obj_t* res_hint     = nullptr;
     lv_obj_t* res_arrow    = nullptr;
     lv_obj_t* res_detected = nullptr;
+    lv_obj_t* res_metrics  = nullptr;
     lv_obj_t* res_buttons  = nullptr;
     lv_obj_t* res_ok_label = nullptr;
     lv_obj_t* res_banner   = nullptr;
@@ -223,6 +228,13 @@ void apply_result(Bin bin, bool corrected) {
     if (corrected) snprintf(buf, sizeof buf, "Corrected by you");
     else           snprintf(buf, sizeof buf, "Detected: %s", S.item);
     lv_label_set_text(S.res_detected, buf);
+
+    float confidence_percent = (S.confidence <= 1.0f) ? S.confidence * 100.0f : S.confidence;
+
+    char metrics[100];
+    snprintf(metrics, sizeof(metrics), "Confidence: %.1f%%    Processing time: %.0f ms", confidence_percent, S.latency_ms);
+
+    lv_label_set_text(S.res_metrics, metrics);
 
     lv_obj_set_style_text_color(S.res_ok_label, bg, 0);   // "Looks right" text matches bin colour
 
@@ -458,8 +470,11 @@ void build_result() {                     // Screens 4, 5, 8 (same widgets, rest
     S.res_detected = make_label(S.scr_result, "", &lv_font_montserrat_16, lv_color_hex(0xD6E4F5));
     lv_obj_align(S.res_detected, LV_ALIGN_TOP_MID, 0, 196);
 
+    S.res_metrics = make_label(S.scr_result, "", &lv_font_montserrat_16, lv_color_hex(0xD6E4F5));
+    lv_obj_align(S.res_metrics, LV_ALIGN_TOP_MID, 0, 218);
+
     // Action buttons (hidden on the "corrected" version)
-    S.res_buttons = make_box(S.scr_result, 30, 236, 420, 60);
+    S.res_buttons = make_box(S.scr_result, 30, 250, 420, 60);
     lv_obj_t* ok = make_button(S.res_buttons, "Looks right", 0, 0, 200, 60, C_WHITE, C_BLUE,
                                &lv_font_montserrat_20, 0, C_WHITE, on_looks_right, nullptr);
     S.res_ok_label = lv_obj_get_child(ok, 0);
@@ -467,7 +482,7 @@ void build_result() {                     // Screens 4, 5, 8 (same widgets, rest
                 &lv_font_montserrat_20, 2, C_RUST, on_thats_wrong, nullptr);
 
     // "Thanks" banner (shown instead of the buttons on the corrected version)
-    S.res_banner = make_box(S.scr_result, 30, 240, 420, 52);
+    S.res_banner = make_box(S.scr_result, 30, 254, 420, 52);
     lv_obj_set_style_radius(S.res_banner, 14, 0);
     lv_obj_set_style_bg_color(S.res_banner, C_MINT, 0);
     lv_obj_set_style_bg_opa(S.res_banner, LV_OPA_COVER, 0);
@@ -536,6 +551,12 @@ void build_special_disposal() {
     lv_obj_set_style_text_align(detail, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_align(detail, LV_ALIGN_TOP_MID, 0, 207);
 
+    S.res_metrics = make_label(
+        S.scr_special, "", &lv_font_montserrat_16, C_TEXT
+    );
+
+    lv_obj_align(S.res_metrics, LV_ALIGN_TOP_MID, 0, 238);
+
     make_button(S.scr_special, "Return to start", 140, 263, 200, 46, C_GREEN, C_WHITE,
         &lv_font_montserrat_20, 0, C_GREEN, on_special_done, nullptr);
 }
@@ -561,8 +582,59 @@ void build_manual_review() {
     lv_obj_set_style_text_align(detail, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_align(detail, LV_ALIGN_TOP_MID, 0, 207);
 
+    S.res_metrics = make_label(
+        S.scr_review, "", &lv_font_montserrat_16, C_TEXT
+    );
+
+    lv_obj_align(S.res_metrics, LV_ALIGN_TOP_MID, 0, 238);
+
     make_button(S.scr_review, "Return to start", 140, 263, 200, 46, C_GREEN, C_WHITE,
         &lv_font_montserrat_20, 0, C_GREEN, on_special_done, nullptr);
+}
+
+void build_wifi_error() {
+    S.scr_wifi_error = new_screen(C_WHITE);
+
+    make_header(S.scr_wifi_error, "WI-FI CONNECTION LOST", C_RUST);
+
+    // Main warning panel
+    lv_obj_t* panel = make_box(S.scr_wifi_error, 40, 78, 400, 116);
+
+    lv_obj_set_style_radius(panel, 16, 0);
+    lv_obj_set_style_bg_color(panel, C_PEACH, 0);
+    lv_obj_set_style_bg_opa(panel, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(panel, 2, 0);
+    lv_obj_set_style_border_color(panel, C_RUST, 0);
+
+    lv_obj_t* message = make_label(
+        panel,
+        "Unable to connect\nto the Wi-Fi.",
+        &lv_font_montserrat_28,
+        C_RUST
+    );
+
+    lv_obj_center(message);
+
+    // Instructions
+    lv_obj_t* detail = make_label(
+        S.scr_wifi_error,
+        "Please check that your WiFi is turned on\n"
+        "and that Smart Sort is within range.",
+        &lv_font_montserrat_16,
+        C_TEXT
+    );
+
+    lv_obj_set_style_text_align(detail, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_align(detail, LV_ALIGN_TOP_MID, 0, 215);
+
+    lv_obj_t* instruction = make_label(
+        S.scr_wifi_error,
+        "Restart the device after checking the connection.",
+        &lv_font_montserrat_16,
+        C_RUST
+    );
+
+    lv_obj_align(instruction, LV_ALIGN_TOP_MID, 0, 260);
 }
 
 
@@ -581,6 +653,8 @@ void init(const Callbacks& cb) {
     build_reason();
     build_special_disposal();
     build_manual_review();
+    build_wifi_error();
+
     go(S.scr_idle, /*animate=*/false);
 }
 
@@ -594,6 +668,12 @@ void show_scan_prompt() {
     arm_timeout(T_SCAN_MS, timeout_to_idle);
     go(S.scr_scan);
     start_preview();
+}
+
+void show_wifi_error() {
+    stop_preview();
+    cancel_timeout();
+    go(S.scr_wifi_error, false);
 }
 
 bool capture_scan_image() {
@@ -646,25 +726,68 @@ void show_analyzing() {
     go(S.scr_analyzing);
 }
 
-void show_result(Bin bin, const char* item_name) {
+void show_result(Bin bin, const char* item_name, float confidence, float latency_ms) {
     stop_preview();
+
     S.shown = bin;
+    S.confidence = confidence;
+    S.latency_ms = latency_ms;
+
     snprintf(S.item, sizeof S.item, "%s", item_name ? item_name : "Unknown item");
+
     apply_result(bin, /*corrected=*/false);
     arm_timeout(T_RESULT_MS, timeout_to_idle);
     go(S.scr_result);
 }
 
-void show_special_disposal() {
+void show_special_disposal(float confidence, float latency_ms) {
     stop_preview();
     cancel_timeout();
+
+    S.confidence = confidence;
+    S.latency_ms = latency_ms;
+
+    float confidence_percent =
+        (confidence <= 1.0f) ? confidence * 100.0f : confidence;
+
+    char metrics[100];
+
+    snprintf(
+        metrics,
+        sizeof(metrics),
+        "Confidence: %.1f%%    Processing time: %.0f ms",
+        confidence_percent,
+        latency_ms
+    );
+
+    lv_label_set_text(S.res_metrics, metrics);
+
     arm_timeout(T_RESULT_MS, timeout_to_idle);
     go(S.scr_special);
 }
 
-void show_manual_review() {
+void show_manual_review(float confidence, float latency_ms) {
     stop_preview();
     cancel_timeout();
+
+    S.confidence = confidence;
+    S.latency_ms = latency_ms;
+
+    float confidence_percent =
+        (confidence <= 1.0f) ? confidence * 100.0f : confidence;
+
+    char metrics[100];
+
+    snprintf(
+        metrics,
+        sizeof(metrics),
+        "Confidence: %.1f%%    Processing time: %.0f ms",
+        confidence_percent,
+        latency_ms
+    );
+
+    lv_label_set_text(S.res_metrics, metrics);
+
     arm_timeout(T_RESULT_MS, timeout_to_idle);
     go(S.scr_review);
 }

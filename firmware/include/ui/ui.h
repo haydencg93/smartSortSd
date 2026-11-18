@@ -39,8 +39,9 @@ void show_idle();
 void show_scan_prompt();
 bool capture_scan_image();
 void show_analyzing();
-void show_result(Bin bin, const char* item_name);
-void show_special_disposal();
-void show_manual_review();
+void show_result(Bin bin, const char* item_name, float confidence, float latency_ms);
+void show_special_disposal(float confidence = 0.0f, float latency_ms = 0.0f);
+void show_manual_review(float confidence = 0.0f, float latency_ms = 0.0f);
+void show_wifi_error();
 
 }  // namespace ui

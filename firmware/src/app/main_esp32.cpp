@@ -11,11 +11,13 @@
 #include "secrets.h"
 
 namespace {
+    bool wifi_error_shown = false;
+
     uint32_t tick_cb() {
         return millis();
     }
 
-    void connect_wifi() {
+    bool connect_wifi() {
         Serial.println();
         Serial.println("[WiFi] Connecting to Android hotspot...");
 
@@ -44,6 +46,8 @@ namespace {
             Serial.println("[WiFi] Connection failed or timed out.");
             Serial.println("[WiFi] The kiosk will continue without WiFi.");
         }
+
+        return WiFi.status() == WL_CONNECTED;
     }
     
     void test_classifier_api() {
@@ -83,9 +87,24 @@ namespace {
 }
 
 void on_presence_changed(bool active) {
+    if (WiFi.status() != WL_CONNECTED) {
+        demo_flow_cancel();
+        board::backlight_on();
+
+        if (!wifi_error_shown) {
+            ui::show_wifi_error();
+            wifi_error_shown = true;
+            Serial.println("[UI] Wi-Fi error screen displayed.");
+        }
+
+        return;
+    }
+
+    wifi_error_shown = false;
+
     if (active) {
         board::backlight_on();
-        ui::show_idle();
+        demo_flow_start_scan();
     } else {
         demo_flow_cancel();
         ui::show_idle();
@@ -96,15 +115,28 @@ void on_presence_changed(bool active) {
 void setup() {
     Serial.begin(115200);
 
-    connect_wifi();
-    test_classifier_api();
+    bool wifi_connected = connect_wifi();
+
+    if(wifi_connected) {
+        test_classifier_api();
+    }
 
     lv_init();
     lv_tick_set_cb(tick_cb);
     board::init_waveshare_touch_lcd_35();
+
     demo_flow_init();
+
     proximity::begin(on_presence_changed);
-    Serial.println("Smart Sort UI ready. Tap the idle screen to run the demo flow.");
+
+    if(!wifi_connected){
+        board::backlight_on();
+        ui::show_wifi_error();
+        wifi_error_shown = true;
+        Serial.println("[UI] Wi-Fi error screen displayed at startup");
+    }
+
+    Serial.println("Smart Sort UI ready.");
 }
 
 void loop() {

@@ -395,20 +395,24 @@ static void poll_classifier_result(lv_timer_t*) {
     if (strcmp(result.classification, "recycling") == 0) {
         ui::show_result(
             ui::Bin::Recycle,
-            result.material
+            result.material,
+            result.confidence,
+            result.latency_ms
         );
     }
     else if (strcmp(result.classification, "landfill") == 0) {
         ui::show_result(
             ui::Bin::Trash,
-            result.material
+            result.material,
+            result.confidence, 
+            result.latency_ms
         );
     }
     else if (strcmp(result.classification, "special_disposal") == 0) {
-        ui::show_special_disposal();
+        ui::show_special_disposal(result.confidence, result.latency_ms);
     }
     else if (strcmp(result.classification, "manual_review") == 0) {
-        ui::show_manual_review();
+        ui::show_manual_review(result.confidence, result.latency_ms);
     }
     else {
         Serial.println("[API] ERROR: Unknown classification.");
