@@ -2,6 +2,9 @@
 
 #include <lvgl.h>
 #include <stdint.h>
+#include <stddef.h>
+
+namespace smartsort { struct Detection; }
 
 namespace ui {
 
@@ -37,6 +40,9 @@ void init(const Callbacks& cb);
 
 void show_idle();
 void show_scan_prompt();
+void show_detection_boxes(const smartsort::Detection* detections, size_t count);
+void clear_detection_boxes();
+bool is_idle_visible();
 bool capture_scan_image();
 void show_analyzing();
 void show_result(Bin bin, const char* item_name, float confidence, float latency_ms);

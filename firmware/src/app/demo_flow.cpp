@@ -2,6 +2,11 @@
 #include "app/demo_flow.h"
 #include "ui/ui.h"
 #include "sensors/camera.h"
+#include "app/auto_scan.h"
+#include <vector>
+#if defined(ARDUINO)
+#include "sensors/proximity.h"
+#endif
 
 #include <Arduino.h>
 #include <WiFi.h>
@@ -31,13 +36,14 @@ static const char* MULTIPART_BOUNDARY =
 // Flow state
 // ---------------------------------------------------------------------------
 
-static lv_timer_t* pending_flow_timer = nullptr;
 static lv_timer_t* result_poll_timer = nullptr;
 
 static QueueHandle_t classifier_result_queue = nullptr;
 
 static volatile bool classifier_busy = false;
 static volatile bool flow_active = false;
+static bool scanning = false;
+static smartsort::AutoScan scan_gate;
 
 static uint32_t flow_generation = 0;
 
@@ -63,19 +69,6 @@ struct ClassificationRequest {
     uint8_t* jpeg_data;
     size_t jpeg_size;
 };
-
-// ---------------------------------------------------------------------------
-// Timer helper
-// ---------------------------------------------------------------------------
-
-static void after(uint32_t ms, lv_timer_cb_t fn) {
-    if (pending_flow_timer != nullptr) {
-        lv_timer_delete(pending_flow_timer);
-    }
-
-    pending_flow_timer = lv_timer_create(fn, ms, nullptr);
-    lv_timer_set_repeat_count(pending_flow_timer, 1);
-}
 
 // ---------------------------------------------------------------------------
 // JSON parsing
@@ -385,6 +378,7 @@ static void poll_classifier_result(lv_timer_t*) {
     }
 
     flow_active = false;
+    scanning = false;
 
     if (!result.success) {
         Serial.println("[API] Classification failed. Requesting manual review.");
@@ -421,77 +415,85 @@ static void poll_classifier_result(lv_timer_t*) {
 }
 
 // ---------------------------------------------------------------------------
-// Scan flow
+// Scan flow: ONLY inference results may trigger capture. Never use a wall timer.
+// The detector adapter must call demo_flow_on_detections() from the LVGL thread
+// after each *completed*, fresh YOLO inference. No YOLO runtime is included here.
 // ---------------------------------------------------------------------------
+static void capture_detected_item() {
+    if (!flow_active || !scanning) return;
+    scanning = false;
+    Serial.println("[Scan] YOLO candidate confirmed; capturing JPEG");
 
-static void step_analyze(lv_timer_t* timer) {
-    if (pending_flow_timer == timer) {
-        pending_flow_timer = nullptr;
-    }
-
-    if (!flow_active) {
-        return;
-    }
-
-    Serial.println("[Camera] Capturing final image...");
-
-    // Capture a JPEG before show_analyzing() shuts down the camera.
     uint8_t* jpeg_data = nullptr;
     size_t jpeg_size = 0;
-
     if (!camera::capture_jpeg(&jpeg_data, jpeg_size)) {
-        Serial.println("[Camera] ERROR: JPEG capture failed.");
-        ui::show_manual_review();
+        Serial.println("[Camera] ERROR: JPEG capture failed");
         flow_active = false;
+        scan_gate.capture_finished();
+        ui::show_manual_review();
         return;
     }
-
-    Serial.printf(
-        "[Camera] JPEG ready: %u bytes\n",
-        static_cast<unsigned int>(jpeg_size)
-    );
-
-    // This stops the camera and displays the analyzing screen.
-    ui::show_analyzing();
-
-    // The actual HTTP request runs in a separate task.
+    ui::show_analyzing(); // Stops the LVGL preview timer and camera
+    scan_gate.capture_finished(); // Must observe item removal before rearming
     start_classifier(jpeg_data, jpeg_size);
 }
 
-static void on_idle_tapped() {
-    if (classifier_busy) {
-        Serial.println("[API] Previous classification is still running.");
-        return;
+void demo_flow_on_detections(
+    const smartsort::Detection* detections,
+    size_t count,
+    uint32_t inference_completed_ms
+) {
+    if (!flow_active || !scanning || !camera::is_running()) return;
+    if (count && detections == nullptr) return;
+    std::vector<smartsort::Detection> batch;
+    if (detections && count) batch.assign(detections, detections + count);
+
+    // Draw boxes from the same inference result that drives the scan gate.
+    // Person (COCO 0): red; all other recognized categories: green; no labels.
+    ui::show_detection_boxes(detections, count);
+    if (scan_gate.update(batch, inference_completed_ms)) {
+        capture_detected_item();
     }
-
-    flow_generation++;
-    flow_active = true;
-
-    Serial.println("[Flow] Starting new scan.");
-
-    ui::show_scan_prompt();
-
-    after(5000, step_analyze);
 }
 
-// ---------------------------------------------------------------------------
-// Public API
-// ---------------------------------------------------------------------------
-
 void demo_flow_start_scan() {
-    on_idle_tapped();
+    if (classifier_busy || scanning || flow_active) return;
+    // Keep WaitForRemoval after an earlier successful scan until the detector
+    // actually sees an empty detection zone. Only leaving the 12in proximity
+    // zone fully resets the gate.
+    flow_generation++;
+    flow_active = true;
+    scanning = true;
+    Serial.println("[Flow] Camera scanning; waiting for REAL YOLO detections (no timer capture)");
+    ui::show_scan_prompt();
 }
 
 void demo_flow_cancel() {
     flow_generation++;
     flow_active = false;
+    scanning = false;
+    scan_gate.reset();
+    ui::clear_detection_boxes();
+    Serial.println("[Flow] Scan cancelled / distance zone exited");
+}
 
-    if (pending_flow_timer != nullptr) {
-        lv_timer_delete(pending_flow_timer);
-        pending_flow_timer = nullptr;
+void demo_flow_update(bool camera_zone_active) {
+    // UI returns to Idle after result confirmation or an inactivity timeout.
+    // If a user is still within 12in, automatically resume preview; retained
+    // WaitForRemoval state prevents photographing the same object again.
+    if (camera_zone_active && !classifier_busy && !scanning && !flow_active &&
+        ui::is_idle_visible()) {
+        demo_flow_start_scan();
     }
+}
 
-    Serial.println("[Flow] Scan cancelled.");
+static void on_idle_tapped() {
+    // Desktop simulator supports tap-to-scan. On hardware, tapping welcome
+    // must NOT bypass the 12-inch proximity requirement.
+#if defined(ARDUINO)
+    if (proximity::current_zone() != proximity::Zone::Camera) return;
+#endif
+    demo_flow_start_scan();
 }
 
 static void on_feedback(const ui::Feedback& f) {

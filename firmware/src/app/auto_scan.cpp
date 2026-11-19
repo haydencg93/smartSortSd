@@ -23,10 +23,17 @@ bool AutoScan::eligible(const Detection& d) const {
 }
 
 bool AutoScan::same_item(const Detection& a, const Detection& b) const {
-    if (a.class_id != b.class_id) return false;
+    // COCO labels may change between frames (e.g. "bottle" -> "cup").
+    // Match an eligible object by position and approximate size, NOT its label.
+    if (a.class_id <= 0 || b.class_id <= 0) return false;
     const float dx = (a.x1 + a.x2 - b.x1 - b.x2) * 0.5f;
     const float dy = (a.y1 + a.y2 - b.y1 - b.y2) * 0.5f;
-    return dx * dx + dy * dy <=
+    const float aa = (a.x2 - a.x1) * (a.y2 - a.y1);
+    const float ba = (b.x2 - b.x1) * (b.y2 - b.y1);
+    if (aa <= 0.0f || ba <= 0.0f) return false;
+    const float ratio = aa / ba;
+    return ratio >= 0.5f && ratio <= 2.0f &&
+           dx * dx + dy * dy <=
            settings_.max_center_motion * settings_.max_center_motion;
 }
 

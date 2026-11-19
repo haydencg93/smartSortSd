@@ -12,6 +12,7 @@
 
 namespace {
     bool wifi_error_shown = false;
+    bool previous_wifi_up = false;
 
     uint32_t tick_cb() {
         return millis();
@@ -86,29 +87,34 @@ namespace {
     }
 }
 
-void on_presence_changed(bool active) {
-    if (WiFi.status() != WL_CONNECTED) {
-        demo_flow_cancel();
-        board::backlight_on();
+// Proximity is the ONLY owner of standby/welcome/camera screen transitions.
+// One callback per debounced zone transition; no timer-based photograph.
+void on_distance_zone_changed(proximity::Zone zone, float distance_inches) {
+    Serial.printf("[App] Zone=%s distance=%.1fin\n", proximity::zone_name(zone), distance_inches);
 
-        if (!wifi_error_shown) {
-            ui::show_wifi_error();
-            wifi_error_shown = true;
-            Serial.println("[UI] Wi-Fi error screen displayed.");
-        }
-
-        return;
-    }
-
-    wifi_error_shown = false;
-
-    if (active) {
-        board::backlight_on();
-        demo_flow_start_scan();
-    } else {
+    if (zone == proximity::Zone::Standby) {
         demo_flow_cancel();
         ui::show_idle();
         board::backlight_off();
+        return;
+    }
+
+    board::backlight_on();
+    if (WiFi.status() != WL_CONNECTED) {
+        demo_flow_cancel();
+        if (!wifi_error_shown) {
+            ui::show_wifi_error();
+            wifi_error_shown = true;
+        }
+        return;
+    }
+    wifi_error_shown = false;
+
+    if (zone == proximity::Zone::Welcome) {
+        demo_flow_cancel();
+        ui::show_idle();
+    } else if (zone == proximity::Zone::Camera) {
+        demo_flow_start_scan();
     }
 }
 
@@ -116,6 +122,7 @@ void setup() {
     Serial.begin(115200);
 
     bool wifi_connected = connect_wifi();
+    previous_wifi_up = wifi_connected;
 
     if(wifi_connected) {
         test_classifier_api();
@@ -127,13 +134,12 @@ void setup() {
 
     demo_flow_init();
 
-    proximity::begin(on_presence_changed);
+    proximity::begin(on_distance_zone_changed);
 
-    if(!wifi_connected){
-        board::backlight_on();
-        ui::show_wifi_error();
-        wifi_error_shown = true;
-        Serial.println("[UI] Wi-Fi error screen displayed at startup");
+    if (!wifi_connected) {
+        // Honor standby on startup. Display the Wi-Fi error only when someone
+        // approaches the HC-SR04, not while the device should be asleep.
+        Serial.println("[WiFi] Offline; error screen will appear when a user approaches.");
     }
 
     Serial.println("Smart Sort UI ready.");
@@ -142,5 +148,14 @@ void setup() {
 void loop() {
     lv_timer_handler();
     proximity::update();
+    const bool wifi_up = WiFi.status() == WL_CONNECTED;
+    if (wifi_up != previous_wifi_up) {
+        previous_wifi_up = wifi_up;
+        if (proximity::current_zone() != proximity::Zone::Standby) {
+            on_distance_zone_changed(proximity::current_zone(),
+                                     proximity::latest_distance_inches());
+        }
+    }
+    demo_flow_update(proximity::current_zone() == proximity::Zone::Camera && wifi_up);
     delay(5);
 }

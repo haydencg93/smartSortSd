@@ -1,5 +1,6 @@
 #include "ui/ui.h"
 #include "sensors/camera.h"
+#include "app/auto_scan.h"
 
 #include <Arduino.h>
 #include <esp_heap_caps.h>
@@ -22,7 +23,7 @@ namespace {
 #define C_TEXT    lv_color_hex(0x33443D)   // body text on white
 
 // Timeouts: if the user walks away mid-flow, fall back to Idle.
-constexpr uint32_t T_SCAN_MS      = 30000;
+// No scanning timeout: exit camera only after proximity leaves 12-inch zone.
 constexpr uint32_t T_ANALYZE_MS   = 30000;
 constexpr uint32_t T_RESULT_MS    = 20000;
 constexpr uint32_t T_CORRECT_MS   = 20000;
@@ -69,6 +70,8 @@ struct State {
     // Live camera preview
     lv_obj_t* preview_image = nullptr;
     lv_obj_t* preview_status = nullptr;
+    static constexpr size_t MAX_DETECTION_BOXES = 12;
+    lv_obj_t* detection_boxes[MAX_DETECTION_BOXES] = {};
     lv_timer_t* preview_timer = nullptr;
 
     uint8_t* preview_buffer = nullptr;
@@ -437,6 +440,19 @@ void build_scan() {                       // Screen 2
     S.preview_status = make_label(S.scr_scan, "Starting camera...", &lv_font_montserrat_16, C_TEXT );
 
     lv_obj_align(S.preview_status, LV_ALIGN_CENTER, 0, 20);
+
+    // Overlay rectangles above preview, without class names or confidences.
+    for (size_t i = 0; i < State::MAX_DETECTION_BOXES; ++i) {
+        lv_obj_t* outline = lv_obj_create(S.scr_scan);
+        lv_obj_set_style_bg_opa(outline, LV_OPA_TRANSP, 0);
+        lv_obj_set_style_border_width(outline, 3, 0);
+        lv_obj_set_style_radius(outline, 0, 0);
+        lv_obj_set_style_pad_all(outline, 0, 0);
+        lv_obj_remove_flag(outline, LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_remove_flag(outline, LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_add_flag(outline, LV_OBJ_FLAG_HIDDEN);
+        S.detection_boxes[i] = outline;
+    }
 }
 
 void build_analyzing() {                  // Screen 3
@@ -660,12 +676,44 @@ void init(const Callbacks& cb) {
 
 void show_idle() {
     stop_preview();
+    clear_detection_boxes();
     cancel_timeout();
     go(S.scr_idle);
 }
 
+bool is_idle_visible() {
+    return lv_screen_active() == S.scr_idle;
+}
+
+void clear_detection_boxes() {
+    for (auto* box : S.detection_boxes) {
+        if (box) lv_obj_add_flag(box, LV_OBJ_FLAG_HIDDEN);
+    }
+}
+
+void show_detection_boxes(const smartsort::Detection* detections, size_t count) {
+    clear_detection_boxes();
+    if (!detections || !count || lv_screen_active() != S.scr_scan) return;
+    size_t shown = 0;
+    for (size_t i = 0; i < count && shown < State::MAX_DETECTION_BOXES; ++i) {
+        const auto& d = detections[i];
+        if (d.class_id < 0 || d.confidence < 0.55f ||
+            d.x1 < 0.0f || d.y1 < 0.0f || d.x2 > 1.0f || d.y2 > 1.0f ||
+            d.x2 <= d.x1 || d.y2 <= d.y1) continue;
+        auto* box = S.detection_boxes[shown++];
+        lv_obj_set_pos(box, 80 + static_cast<int32_t>(d.x1 * 320),
+                            64 + static_cast<int32_t>(d.y1 * 240));
+        lv_obj_set_size(box, static_cast<int32_t>((d.x2 - d.x1) * 320),
+                             static_cast<int32_t>((d.y2 - d.y1) * 240));
+        lv_obj_set_style_border_color(box,
+            lv_color_hex(d.class_id == 0 ? 0xEE3333 : 0x00CC66), 0);
+        lv_obj_remove_flag(box, LV_OBJ_FLAG_HIDDEN);
+    }
+}
+
 void show_scan_prompt() {
-    arm_timeout(T_SCAN_MS, timeout_to_idle);
+    cancel_timeout();
+    clear_detection_boxes();
     go(S.scr_scan);
     start_preview();
 }
