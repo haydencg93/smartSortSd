@@ -7,6 +7,8 @@ empty, safe to discard, or accepted by a campus collection program.
 Location rules live in the *only* added repository file: rules/uiowa.json.
 Additional locations can later be added under its ``locations`` key. The model
 classifier is independent of the location-specific disposal decision.
+
+To run locally: python -m uvicorn app:app --host 127.0.0.1 --port 8000 --reload
 """
 import io
 import json
@@ -98,7 +100,6 @@ def read_class_order(checkpoint_path, state_dict):
     raise ValueError(f'Expanded checkpoint needs label metadata: {sidecar}. '
                      'Keep the .classes.json alongside the model .pth file.')
 
-
 @app.on_event('startup')
 def load_model():
     global model, MATERIAL_CLASSES
@@ -116,11 +117,9 @@ def load_model():
     model = m
     logger.info('Loaded %d classes: %s', len(classes), classes)
 
-
 @app.get('/health')
 def health_check():
     return {'status': 'ok', 'model_loaded': model is not None}
-
 
 @app.post('/classify', response_model=ClassificationResponse)
 async def classify(file: UploadFile = File(...)):
